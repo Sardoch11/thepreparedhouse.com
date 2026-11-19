@@ -135,6 +135,73 @@ textarea{min-height:96px;resize:vertical}
 footer{padding:var(--space-12) 0;color:var(--ink-muted);font-size:14px;line-height:1.6;border-top:1px solid var(--line);margin-top:var(--space-12)}
 footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:var(--space-4)}
 
+
+/* Imagery: storm photos sit under slate, safe photos stay warm and natural */
+.photo{position:relative;overflow:hidden;background:var(--storm)}
+.photo img{display:block;width:100%;height:100%;object-fit:cover}
+.photo--storm img{filter:grayscale(.35) contrast(1.05)}
+.photo--storm::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(58,68,80,.25) 0%,rgba(58,68,80,.92) 70%)}
+.photo--safe{background:var(--clearing)}
+.cap{font-size:12px;line-height:1.4;color:var(--ink-muted);margin:var(--space-1) 0 0}
+.cap--on-storm{color:var(--on-storm-muted)}
+.split__storm{position:relative;padding:0;justify-content:flex-end;min-height:480px}
+.split__storm .photo{position:absolute;inset:0}
+.split__storm .storm-copy{position:relative;z-index:1;padding:var(--space-8);display:flex;flex-direction:column;gap:var(--space-3)}
+.split__safe{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:var(--space-8);align-items:center}
+.safe-copy{display:flex;flex-direction:column;gap:var(--space-4)}
+.safe-photo{border-radius:var(--radius-md);overflow:hidden;aspect-ratio:4/5;box-shadow:var(--shadow-card)}
+.safe-photo img{display:block;width:100%;height:100%;object-fit:cover}
+.split__headline{font-size:clamp(40px,4.2vw,52px)}
+.split__storm .split__fact{font-size:48px}
+
+/* Storm to Safe pairs */
+.pairs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-6)}
+.pair{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden;display:flex;flex-direction:column}
+.pair__storm{position:relative;height:200px}
+.pair__storm .photo{position:absolute;inset:0}
+.pair__storm .fact{position:absolute;left:0;right:0;bottom:0;z-index:1;padding:var(--space-4) var(--space-6);color:var(--on-storm)}
+.pair__storm .fact b{display:block;font-family:var(--font-display);font-stretch:75%;font-weight:800;font-size:40px;line-height:1;color:var(--flare)}
+.pair__storm .fact span{display:block;font-size:15px;line-height:1.4;margin-top:var(--space-1)}
+.pair__storm .fact small{display:block;font-size:12px;color:var(--on-storm-muted);margin-top:2px}
+.pair__safe{height:300px}
+.pair__safe img{display:block;width:100%;height:100%;object-fit:cover}
+.pair__body{padding:var(--space-6);display:flex;flex-direction:column;gap:var(--space-3);border-top:4px solid var(--safe)}
+.pair__body p{margin:0}
+.pair__line{font-family:var(--font-display);font-weight:700;font-size:22px;line-height:1.25;color:var(--safe-deep)}
+
+/* PATH step photos */
+.path__photo{margin:calc(var(--space-6) * -1) calc(var(--space-6) * -1) var(--space-2);height:150px;overflow:hidden;border-bottom:1px solid var(--line)}
+.path__photo img{display:block;width:100%;height:100%;object-fit:cover}
+.path__step{overflow:hidden}
+.path__marker{margin-top:calc(var(--space-6) * -1 - 12px);position:relative;border:3px solid var(--surface)}
+
+/* Sign-up photo */
+.signup__photo{border-radius:var(--radius-md);overflow:hidden;aspect-ratio:16/9;margin-top:var(--space-4)}
+.signup__photo img{display:block;width:100%;height:100%;object-fit:cover}
+
+/* Credits */
+.credits{font-size:12px;line-height:1.6;color:var(--ink-muted);max-width:1120px;margin:0 auto;padding:0 var(--space-6) var(--space-8)}
+.credits summary{cursor:pointer;font-weight:700;color:var(--ink)}
+.credits ul{margin:var(--space-2) 0 0;padding-left:18px}
+.credits a{font-weight:400}
+
+@media (max-width:1000px){
+  .split__safe{grid-template-columns:1fr}
+  .safe-photo{aspect-ratio:16/10}
+  .pairs{grid-template-columns:1fr}
+  .pair{display:grid;grid-template-columns:1fr 2fr;grid-template-rows:auto auto}
+  .pair__storm{height:auto;min-height:260px}
+  .pair__safe{height:auto;min-height:260px}
+  .pair__body{grid-column:1 / -1}
+}
+@media (max-width:640px){
+  .split__storm{min-height:380px}
+  .split__headline{font-size:40px}
+  .pair{display:flex}
+  .pair__storm{height:200px;min-height:0}
+  .pair__safe{height:240px;min-height:0}
+}
+
 @media (max-width:900px){
   .survey-grid,.signup{grid-template-columns:1fr}
   .survey-aside{position:static}
@@ -168,6 +235,7 @@ footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:var(-
     </a>
     <nav class="nav" aria-label="Main">
       <a class="text" href="#survey">Survey</a>
+      <a class="text" href="#storm-to-safe">Storm to Safe</a>
       <a class="text" href="#how">How it works</a>
       <a class="btn btn--primary btn--sm" href="#updates">Get updates</a>
     </nav>
@@ -178,11 +246,15 @@ footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:var(-
   <div class="wrap hero">
     <div class="split">
       <div class="split__storm">
-        <p class="label">Portland ice storm · January 2024</p>
-        <p class="split__fact"><em>524,600</em>homes and businesses lost power</p>
-        <p class="src">Source: Portland General Electric</p>
+        <div class="photo photo--storm" aria-hidden="true"><img src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/ae/Ice_storm_causes_closure_of_I-84.jpg/960px-Ice_storm_causes_closure_of_I-84.jpg" alt="" fetchpriority="high"></div>
+        <div class="storm-copy">
+          <p class="label">Portland-area ice storm · January 2024</p>
+          <p class="split__fact"><em>524,600</em>customer outages in nine days</p>
+          <p class="src">Source: Portland General Electric. Photo: I-84 closed by ice in the Columbia River Gorge, January 16, 2024.</p>
+        </div>
       </div>
       <div class="split__safe">
+       <div class="safe-copy">
         <p class="label">The Prepared House · Portland, Oregon</p>
         <h1 class="split__headline">Know where to meet. Know the way home.</h1>
         <p>We're building a local service that sits down with Portland families and writes a plan around your home, your kids' schools and your workplaces: where to meet, how to get there, and what your household needs on hand.</p>
@@ -191,6 +263,8 @@ footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:var(-
           <a class="btn btn--primary" href="#survey">Take the 2-minute survey</a>
           <a class="btn btn--secondary" href="#updates">Get updates</a>
         </div>
+       </div>
+        <div class="safe-photo"><img src="https://images.unsplash.com/photo-1581998392741-67879e0ef04a?auto=format&amp;fit=crop&amp;w=1000&amp;q=70" alt="A mother holds her young child close under a clearing sky." loading="eager"></div>
       </div>
     </div>
   </div>
@@ -220,6 +294,37 @@ footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:var(-
     </div>
   </section>
 
+
+  <section class="block" id="storm-to-safe" aria-labelledby="sts-title">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="label">Storm to Safe</p>
+        <h2 id="sts-title">Portland's hazards are real. So is the way through them.</h2>
+        <p class="lead muted">Every plan we're designing starts with the hazards your neighborhood actually faces, then works back to what your family does about them.</p>
+      </div>
+      <div class="pairs">
+        <article class="pair">
+          <div class="pair__storm"><div class="photo photo--storm"><img src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/63/January_2024_winter_storm_cleanup_-_53474336310.jpg/960px-January_2024_winter_storm_cleanup_-_53474336310.jpg" alt="A road crew cuts up an ice-felled tree on a highway." loading="lazy"></div>
+            <p class="fact"><b>About a week</b><span>without heat for some Portland-area homes in the January 2024 ice storm</span><small>Source: KGW. Photo: Willamette Valley, January 18, 2024.</small></p></div>
+          <div class="pair__safe"><img src="https://images.unsplash.com/photo-1764267704236-ee7d72a3c3b5?auto=format&amp;fit=crop&amp;w=900&amp;q=70" alt="A family wrapped in a blanket together at night, smiling." loading="lazy"></div>
+          <div class="pair__body"><span class="tag" style="align-self:flex-start">Dark2Safe</span><p class="pair__line">Light, heat, food and medicine, planned for a week without power.</p></div>
+        </article>
+        <article class="pair">
+          <div class="pair__storm"><div class="photo photo--storm"><img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/FEMA_-_1438_-_Photograph_by_Kevin_Galvin_taken_on_03-04-2001_in_Washington.jpg/960px-FEMA_-_1438_-_Photograph_by_Kevin_Galvin_taken_on_03-04-2001_in_Washington.jpg" alt="Brick rubble on a sidewalk after an earthquake." loading="lazy"></div>
+            <p class="fact"><b>M6.8</b><span>Nisqually earthquake damage in Seattle, Pacific Northwest, 2001</span><small>Source: USGS. Photo: Kevin Galvin, FEMA, Pioneer Square, March 2001.</small></p></div>
+          <div class="pair__safe"><img src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/df/Temporary_Tsunami_Assembly_Area_sign_near_the_Umpqua_River_Lighthouse_%2846242726362%29.jpg/960px-Temporary_Tsunami_Assembly_Area_sign_near_the_Umpqua_River_Lighthouse_%2846242726362%29.jpg" alt="A blue tsunami assembly area sign showing a family walking to high ground." loading="lazy"></div>
+          <div class="pair__body"><span class="tag" style="align-self:flex-start">Quake2Safe</span><p class="pair__line">Know where your family meets, and how each of you gets there.</p></div>
+        </article>
+        <article class="pair">
+          <div class="pair__storm"><div class="photo photo--storm"><img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/State_Capitol_with_smoky_sky_%2850319586063%29.jpg/960px-State_Capitol_with_smoky_sky_%2850319586063%29.jpg" alt="The Oregon State Capitol under a dark red, smoke-filled sky." loading="lazy"></div>
+            <p class="fact"><b>27 days</b><span>of unhealthy smoke in Portland from 2015 to 2023, after none from 1985 to 2014</span><small>Source: Oregon DEQ. Photo: Salem, September 8, 2020.</small></p></div>
+          <div class="pair__safe"><img src="https://images.unsplash.com/photo-1713942590273-1f3d3466d475?auto=format&amp;fit=crop&amp;w=900&amp;q=70" alt="A mother and her son together in a bright kitchen at home." loading="lazy"></div>
+          <div class="pair__body"><span class="tag" style="align-self:flex-start">Smoke2Safe</span><p class="pair__line">Know which room to seal, what to run, and when it's time to leave.</p></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
   <section class="block" id="how" aria-labelledby="how-title">
     <div class="wrap">
       <div class="section-head">
@@ -228,15 +333,11 @@ footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:var(-
         <p class="lead muted">The plan we're designing follows your family before, during and after an earthquake, storm, outage or wildfire.</p>
       </div>
       <ol class="path">
-        <li class="path__step"><span class="path__marker" aria-hidden="true">P</span><p class="label">Step 1 · Before</p><h3>Plan</h3><p>Contacts, meeting places, and your schools' and workplaces' own procedures, written for your household.</p></li>
-        <li class="path__step"><span class="path__marker" aria-hidden="true">A</span><p class="label">Step 2 · Before</p><h3>Assemble</h3><p>Supplies sized to the people and pets in your home, at home and in the car.</p></li>
-        <li class="path__step"><span class="path__marker" aria-hidden="true">T</span><p class="label">Step 3 · During</p><h3>Travel</h3><p>Safe routes to each other, with backup routes when roads or bridges close.</p></li>
-        <li class="path__step"><span class="path__marker" aria-hidden="true">H</span><p class="label">Step 4 · After</p><h3>Home</h3><p>Reunite, shelter in place and recover. We refresh the plan each year as life changes.</p></li>
+        <li class="path__step"><div class="path__photo"><img src="https://images.unsplash.com/photo-1758613171233-f4e9a58a558a?auto=format&amp;fit=crop&amp;w=700&amp;q=70" alt="Two people read a paper map together in a park." loading="lazy"></div><span class="path__marker" aria-hidden="true">P</span><p class="label">Step 1 · Before</p><h3>Plan</h3><p>Contacts, meeting places, and your schools' and workplaces' own procedures, written for your household.</p></li>
+        <li class="path__step"><div class="path__photo"><img src="https://images.unsplash.com/photo-1782835430497-19223e7432cc?auto=format&amp;fit=crop&amp;w=700&amp;q=70" alt="A green first-aid bag on a shelf." loading="lazy"></div><span class="path__marker" aria-hidden="true">A</span><p class="label">Step 2 · Before</p><h3>Assemble</h3><p>Supplies sized to the people and pets in your home, at home and in the car.</p></li>
+        <li class="path__step"><div class="path__photo"><img src="https://images.unsplash.com/photo-1758962036781-c0dc907aea7b?auto=format&amp;fit=crop&amp;w=700&amp;q=70" alt="A family walks hand in hand down a wooded path." loading="lazy"></div><span class="path__marker" aria-hidden="true">T</span><p class="label">Step 3 · During</p><h3>Travel</h3><p>Safe routes to each other, with backup routes when roads or bridges close.</p></li>
+        <li class="path__step"><div class="path__photo"><img src="https://images.unsplash.com/photo-1740679954227-a0cd19c042a6?auto=format&amp;fit=crop&amp;w=700&amp;q=70" alt="Parents and their child relax together on the couch." loading="lazy"></div><span class="path__marker" aria-hidden="true">H</span><p class="label">Step 4 · After</p><h3>Home</h3><p>Reunite, shelter in place and recover. We refresh the plan each year as life changes.</p></li>
       </ol>
-      <div class="tags" aria-label="Hazards plans will cover">
-        <span class="small muted" style="margin-right:4px">Built for Portland's real hazards:</span>
-        <span class="tag">Quake2Safe</span><span class="tag">Smoke2Safe</span><span class="tag">Dark2Safe</span><span class="tag">Fire2Safe</span>
-      </div>
     </div>
   </section>
 
@@ -248,6 +349,8 @@ footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:var(-
           <h2 id="updates-title">Be first to know when plan building opens</h2>
           <p class="lead">We'll start with a small group of Portland-area families. Sign up to hear when we open, plus a few seasonal tips along the way.</p>
           <p class="small muted">We'll email you only about The Prepared House. Unsubscribe anytime. We never sell or share your information.</p>
+          <figure class="signup__photo" style="margin-bottom:0"><img src="https://upload.wikimedia.org/wikipedia/commons/thumb/f/ff/Portland_Oregon_Aerial_Sunrise%2C_June_2025.jpg/1280px-Portland_Oregon_Aerial_Sunrise%2C_June_2025.jpg" alt="Portland and Mount Hood at sunrise." loading="lazy"></figure>
+          <p class="cap" style="margin-top:0">Portland at sunrise, June 2025.</p>
         </div>
         <div>
           <form id="signup-form" novalidate>
@@ -270,12 +373,28 @@ footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:var(-
   </section>
 </main>
 
+<div class="credits">
+  <details>
+    <summary>Photo credits</summary>
+    <ul>
+      <li>I-84 closed for ice storm; winter storm cleanup: <a href="https://commons.wikimedia.org/wiki/File:Ice_storm_causes_closure_of_I-84.jpg">OregonDOT</a>, <a href="https://commons.wikimedia.org/wiki/File:January_2024_winter_storm_cleanup_-_53474336310.jpg">OregonDOT</a>, <a href="https://creativecommons.org/licenses/by/2.0/">CC BY 2.0</a>, via Wikimedia Commons. Tinted and cropped.</li>
+      <li>Pioneer Square earthquake damage: <a href="https://commons.wikimedia.org/wiki/File:FEMA_-_1438_-_Photograph_by_Kevin_Galvin_taken_on_03-04-2001_in_Washington.jpg">Kevin Galvin / FEMA</a>, public domain.</li>
+      <li>State Capitol with smoky sky: <a href="https://commons.wikimedia.org/wiki/File:State_Capitol_with_smoky_sky_(50319586063).jpg">Oregon Department of Transportation</a>, <a href="https://creativecommons.org/licenses/by/2.0/">CC BY 2.0</a>, via Wikimedia Commons. Tinted and cropped.</li>
+      <li>Tsunami assembly area sign: <a href="https://commons.wikimedia.org/wiki/File:Temporary_Tsunami_Assembly_Area_sign_near_the_Umpqua_River_Lighthouse_(46242726362).jpg">Rick Obst</a>, <a href="https://creativecommons.org/licenses/by/2.0/">CC BY 2.0</a>, via Wikimedia Commons. Cropped.</li>
+      <li>Portland at sunrise: <a href="https://commons.wikimedia.org/wiki/File:Portland_Oregon_Aerial_Sunrise,_June_2025.jpg">Spicypepper999</a>, CC0, via Wikimedia Commons.</li>
+      <li>Family photos via <a href="https://unsplash.com/license">Unsplash</a>: <a href="https://unsplash.com/photos/82NHIKIvKNc">Bethany Beck</a>, <a href="https://unsplash.com/photos/6b2dnVlbVIU">Seljan Salim</a>, <a href="https://unsplash.com/photos/6hkP-t2wx6g">Seljan Salim</a>, <a href="https://unsplash.com/photos/DKHPbzfU1Ts">Vitaly Gariev</a>, <a href="https://unsplash.com/photos/yH8CP2_I9xA">Vitaly Gariev</a>, <a href="https://unsplash.com/photos/t-wsT0Wdeyw">Rhii Photography</a>, <a href="https://unsplash.com/photos/3dauJqwwvwQ">Emma</a>. The people shown don't endorse The Prepared House.</li>
+      <li>Agency photos don't imply endorsement by ODOT, FEMA or any agency.</li>
+    </ul>
+  </details>
+</div>
+
 <footer>
   <div class="wrap">
     <span>© 2026 The Prepared House · Portland, Oregon</span>
     <span>An independent company, not affiliated with any government agency. Survey research for a University of Oregon MBA capstone by Paul Sardoch.</span>
   </div>
 </footer>
+
 
 <iframe name="ph-sink" id="ph-sink" title="Form submission" style="display:none"></iframe>
 
