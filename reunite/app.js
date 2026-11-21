@@ -575,7 +575,9 @@ async function routeLeg(target, travelers, en, label) {
       else o.steps = simplify(o.steps).map(s => ({ text: stepText(s, target.name), road: s.name, ref: s.ref, dist: s.dist, line: s.line }));
       annotate(o.steps, en); };
     opts.forEach(prep);
-    opts.sort((a, b) => a.score - b.score);
+    // among risky options, a street route with real directions ranks above a compass-only line
+    const rk = o => o.score + (o.bad.length && !o.kind.startsWith('street') ? 5e6 : 0);
+    opts.sort((a, b) => rk(a) - rk(b));
     const keep = []; for (const o of opts) if (!keep.some(k => similar(k, o))) keep.push(o);
     opts = keep.slice(0, 3);
     if (risk.length && !opts.some(k => similar(k, risk[0]))) { prep(risk[0]); opts.push(risk[0]); }
@@ -625,7 +627,7 @@ function routeCard(r, ri) {
   const b = r.opts[r.sel], hzM = b.ex.total, pct = b.ex.len ? Math.round(100 * hzM / b.ex.len) : 0;
   const parts = Object.entries(b.ex.by).filter(([, m]) => m >= 20).sort((x, y) => y[1] - x[1]).map(([k, m]) => `${KIND[k] || k} ${fmtKm(m)}`).join(', ');
   const r0 = r.opts[0], dl = (v, f) => (v >= 0 ? '+' : '−') + f(Math.abs(v));
-  const why = o => o === r0 ? (o.used.length ? 'via ' + o.used.join(', ') : 'best balance of distance and hazards') : [Math.abs(o.dist - r0.dist) > 200 ? dl(o.dist - r0.dist, fmtKm) + ' distance' : '', Math.abs(o.ex.total - r0.ex.total) > 50 ? dl(o.ex.total - r0.ex.total, fmtKm) + ' in hazard areas' : '', o.used.join(',') !== r0.used.join(',') && o.used.length ? 'via ' + o.used.join(', ') : ''].filter(Boolean).join(', ') + (o.tags.includes('Backup route') ? '. Use it if the main route is blocked' : '') + (o.bad.length && o !== r0 ? '. Much shorter, but only if that bridge is open' : '');
+  const why = o => o === r0 ? (o.used.length ? 'via ' + o.used.join(', ') : 'best balance of distance and hazards') : [Math.abs(o.dist - r0.dist) > 200 ? dl(o.dist - r0.dist, fmtKm) + ' distance' : '', Math.abs(o.ex.total - r0.ex.total) > 50 ? dl(o.ex.total - r0.ex.total, fmtKm) + ' in hazard areas' : '', o.used.join(',') !== r0.used.join(',') && o.used.length ? 'via ' + o.used.join(', ') : ''].filter(Boolean).join(', ') + (o.tags.includes('Backup route') ? '. Use it if the main route is blocked' : '') + (o.bad.length && o !== r0 && o.dur < r0.dur ? '. Much shorter, but only if that bridge is open' : '');
   const choices = r.opts.length > 1 ? `<div class="opts">${r.opts.map((o, oi) => `<button class="opt${o.bad.length ? ' risky' : ''}" data-opt="${ri}:${oi}" aria-pressed="${oi === r.sel}"><b>${o.tags.join(' · ')}</b><span>${fmtKm(o.dist)} · ${fmtMin(o.dur)} · ${fmtKm(o.ex.total)} in hazards</span><span>${esc(why(o))}</span></button>`).join('')}</div>`
     : b.bad.length ? '<div class="warn" style="margin:8px 0"><b>Best available path, not a safe one.</b> Every crossing on this trip is at risk. Check bridge status first, or wait where you are if that\'s safer.</div>'
     : b.kind === 'straight' ? '' : '<p class="meta" style="margin:8px 0">No other route avoids hazards better than this one.</p>';
