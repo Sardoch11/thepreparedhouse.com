@@ -112,7 +112,7 @@ map.on('moveend', drawWui);
 /* ---------- quake severity: which bridges are assumed closed, how much hazard ground matters ---------- */
 const SEVERITY = {
   mild: { label: 'Mild', scale: .25, desc: 'Like the 1993 Scotts Mills quake (M5.6): mostly light damage. Bridges are assumed open, but any of them may close briefly for inspection.' },
-  medium: { label: 'Medium', scale: .6, desc: 'A strong local quake. Older bridges whose approaches sit on very high liquefaction ground (from the hazard map) are assumed closed; other bridges open with caution.' },
+  medium: { label: 'Medium', scale: .6, desc: 'A strong local quake. Older bridges whose land approaches are mostly (80% or more) very high liquefaction ground on the hazard map are assumed closed; other bridges open with caution.' },
   major: { label: 'Major', scale: 1, desc: "Like DOGAMI's Portland Hills fault M6.8 scenario. Bridges not built or upgraded for earthquakes are assumed closed; quake-ready bridges are assumed to reopen first." },
   severe: { label: 'Severe', scale: 1.4, desc: 'A Cascadia Subduction Zone M9. Older bridges are assumed closed and damage is widespread; quake-ready bridges are assumed to reopen first, after inspection.' }
 };
@@ -145,7 +145,7 @@ function sevOverrides() {
   for (const b of DATA.bridges) {
     if (b.quake === 'resilient') continue;
     if (v === 'mild') o[b.id] = 'open';
-    else if (v === 'medium') { const r = approachRisk(b); o[b.id] = r && r.liq5 >= 3 ? 'closed' : 'open'; }
+    else if (v === 'medium') { const r = approachRisk(b); o[b.id] = r && r.n >= 4 && r.share >= .8 ? 'closed' : 'open'; }
   }
   return o;
 }
@@ -154,7 +154,7 @@ function bridgeReason(b) {
   if (S.overrides[b.id]) return 'Field report: marked ' + S.overrides[b.id];
   if (b.quake === 'resilient') return 'Built or upgraded for earthquakes: assumed among the first to reopen';
   const v = sev(); if (v === 'mild') return 'Assumed open in a mild quake (may close briefly for inspection)';
-  if (v === 'medium') { const r = approachRisk(b); return r ? (r.liq5 >= 3 ? `Assumed closed: ${r.liq5} of ${r.n} approach samples on very high liquefaction ground` : 'Assumed open with caution: approaches mostly off very high liquefaction ground') : 'Load hazard layers to assess approaches'; }
+  if (v === 'medium') { const r = approachRisk(b); return r ? (r.n >= 4 && r.share >= .8 ? `Assumed closed: ${Math.round(r.share * 100)}% of its land approaches are very high liquefaction ground` : `Assumed open with caution: ${Math.round(r.share * 100)}% of its land approaches are very high liquefaction ground`) : 'Load hazard layers to assess approaches'; }
   return `Assumed closed in a ${SEVERITY[v].label.toLowerCase()} quake (not seismically upgraded)`;
 }
 function renderSev() {

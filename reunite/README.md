@@ -105,7 +105,7 @@ The app always returns a path. If no route avoids bridges that are expected to b
 | Level | Reference | Bridges not built or upgraded for earthquakes | Hazard weight |
 | --- | --- | --- | --- |
 | Mild | 1993 Scotts Mills, M5.6 | Assumed open (may close briefly for inspection) | 25% |
-| Medium | Strong local quake | Closed where at least 3 of 16 approach samples (rings at 250 m and 500 m) fall on very high liquefaction ground; otherwise open with caution | 60% |
+| Medium | Strong local quake | Closed where 80% or more of its land approach samples (36 points on rings at 200, 350 and 500 m, skipping the river) fall on very high liquefaction ground; otherwise open with caution. On the Nov 2026 data: Ross Island, Marquam, Morrison, Fremont, St. Johns and Glenn Jackson closed | 60% |
 | Major | DOGAMI Portland Hills fault M6.8 scenario | Assumed closed | 100% |
 | Severe | Cascadia Subduction Zone M9 | Assumed closed | 140% |
 Sellwood, Tilikum and Abernethy (built or upgraded for earthquakes) are assumed to reopen first at every level; routes over them in Major and Severe carry a disclaimer that they still need inspection and may stay closed for hours or longer. Field reports (Open/Closed in Map data) override the scenario. Results open with a scenario banner stating these are planning assumptions, not a forecast.
