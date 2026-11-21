@@ -437,7 +437,8 @@ function annotate(steps, en) {
     s.warn = []; if (s.line.length < 2) continue;
     const ex = E.exposure(H, s.line);
     for (const [k, m] of Object.entries(ex.by).sort((a, b) => b[1] - a[1])) if (m >= 60) s.warn.push(`${fmtKm(m)} through ${KIND[k] || k}`);
-    for (const c of E.crossings(s.line, en)) if (c.bridge && c.open) s.warn.push(`crosses ${c.bridge.name}`);
+    const bs = new Set([...E.crossings(s.line, en).filter(c => c.bridge).map(c => c.bridge), ...bridgesByName([{ name: s.road || '', line: s.line }])]);
+    for (const b of bs) s.warn.push(`crosses ${b.name}`);
   }
   return steps;
 }
@@ -465,7 +466,7 @@ async function routeLeg(target, travelers, en, label) {
       opts = opts.filter(o => !o.bad.length);
     }
     if (!opts.length) corr.forEach((ln, i) => ln && opts.push({ kind: i ? 'corridor-cautious' : 'corridor', line: ln, ...evaluate(ln, en) }));
-    opts.forEach(o => { if (o.kind.startsWith('corridor')) { o.dist = o.ex.len; o.dur = o.dist / (CFG.speed[S.mode] / 3.6); o.steps = corridorSteps(o.line, target.name); } else o.steps = simplify(o.steps).map(s => ({ text: stepText(s, target.name), dist: s.dist, line: s.line })); annotate(o.steps, en); });
+    opts.forEach(o => { if (o.kind.startsWith('corridor')) { o.dist = o.ex.len; o.dur = o.dist / (CFG.speed[S.mode] / 3.6); o.steps = corridorSteps(o.line, target.name); } else o.steps = simplify(o.steps).map(s => ({ text: stepText(s, target.name), road: s.name, dist: s.dist, line: s.line })); annotate(o.steps, en); });
     opts.sort((a, b) => a.score - b.score);
     const keep = []; for (const o of opts) if (!keep.some(k => similar(k, o))) keep.push(o);
     opts = keep.slice(0, 3);
