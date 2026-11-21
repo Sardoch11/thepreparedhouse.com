@@ -97,6 +97,7 @@ function rebuildIndex() {
     if (l.type === 'avoid' && d.polys && st.use) polys.push(...d.polys);
     if (l.type === 'prefer' && d.lines && st.use) PREF.push(...d.lines.map(x => x.ll)); }
   H = polys.length ? E.buildIndex(polys) : null;
+  if (typeof lyBr !== 'undefined' && $('#sevDesc')) { drawBridges(); renderSev(); }   // medium-severity closures depend on the liquefaction layer
 }
 /* wildfire WUI: drawn by the map server as an image for the current view */
 let wuiImg = null;
@@ -108,20 +109,63 @@ function drawWui() {
   wuiImg = L.imageOverlay(u, b, { opacity: 0.45, interactive: false }).addTo(map);
 }
 map.on('moveend', drawWui);
-function env() { return { H, prefer: PREF, rivers: DATA.rivers, bridges: DATA.bridges, overrides: S.overrides, mode: S.mode }; }
+/* ---------- quake severity: which bridges are assumed closed, how much hazard ground matters ---------- */
+const SEVERITY = {
+  mild: { label: 'Mild', scale: .25, desc: 'Like the 1993 Scotts Mills quake (M5.6): mostly light damage. Bridges are assumed open, but any of them may close briefly for inspection.' },
+  medium: { label: 'Medium', scale: .6, desc: 'A strong local quake. Older bridges whose approaches sit on very high liquefaction ground (from the hazard map) are assumed closed; other bridges open with caution.' },
+  major: { label: 'Major', scale: 1, desc: "Like DOGAMI's Portland Hills fault M6.8 scenario. Bridges not built or upgraded for earthquakes are assumed closed; quake-ready bridges are assumed to reopen first." },
+  severe: { label: 'Severe', scale: 1.4, desc: 'A Cascadia Subduction Zone M9. Older bridges are assumed closed and damage is widespread; quake-ready bridges are assumed to reopen first, after inspection.' }
+};
+const sev = () => SEVERITY[S.severity] ? S.severity : (S.severity = 'major');
+let riskMemo = { H: null, m: {} };
+// Liquefaction at a bridge's approaches: sample rings 250 m and 500 m around the bridge point
+function approachRisk(b) {
+  if (!H) return null;
+  if (riskMemo.H !== H) riskMemo = { H, m: {} };
+  if (riskMemo.m[b.id]) return riskMemo.m[b.id];
+  let liq5 = 0, n = 0;
+  for (const r of [250, 500]) for (let k = 0; k < 8; k++) {
+    const a = k * Math.PI / 4, la = b.lat + r * Math.cos(a) / 110540, ln = b.lng + r * Math.sin(a) / (111320 * Math.cos(b.lat * Math.PI / 180));
+    const h = E.hazardAt(H, la, ln); n++; if (h && h.kind === 'liq5') liq5++;
+  }
+  return (riskMemo.m[b.id] = { liq5, n });
+}
+function sevOverrides() {
+  const v = sev(), o = {};
+  for (const b of DATA.bridges) {
+    if (b.quake === 'resilient') continue;
+    if (v === 'mild') o[b.id] = 'open';
+    else if (v === 'medium') { const r = approachRisk(b); o[b.id] = r && r.liq5 >= 3 ? 'closed' : 'open'; }
+  }
+  return o;
+}
+const effOv = () => ({ ...sevOverrides(), ...S.overrides });
+function bridgeReason(b) {
+  if (S.overrides[b.id]) return 'Field report: marked ' + S.overrides[b.id];
+  if (b.quake === 'resilient') return 'Built or upgraded for earthquakes: assumed among the first to reopen';
+  const v = sev(); if (v === 'mild') return 'Assumed open in a mild quake (may close briefly for inspection)';
+  if (v === 'medium') { const r = approachRisk(b); return r ? (r.liq5 >= 3 ? `Assumed closed: ${r.liq5} of ${r.n} approach samples on very high liquefaction ground` : 'Assumed open with caution: approaches mostly off very high liquefaction ground') : 'Load hazard layers to assess approaches'; }
+  return `Assumed closed in a ${SEVERITY[v].label.toLowerCase()} quake (not seismically upgraded)`;
+}
+function renderSev() {
+  const v = sev(), ov = effOv(), closed = DATA.bridges.filter(b => !E.bridgeOpen(b, 'car', ov) && b.modes.car || (!b.modes.car && !E.bridgeOpen(b, 'foot', ov))).length;
+  $$('#sevSeg button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === v));
+  $('#sevDesc').textContent = SEVERITY[v].desc + ` ${closed} of ${DATA.bridges.length} river crossings assumed closed.`;
+}
+function env() { return { H, prefer: PREF, rivers: DATA.rivers, bridges: DATA.bridges, overrides: effOv(), mode: S.mode, hzScale: SEVERITY[sev()].scale }; }
 
 function drawBridges() {
   lyBr.clearLayers();
   for (const b of DATA.bridges) {
-    const open = E.bridgeOpen(b, S.mode, S.overrides), carNo = !b.modes[S.mode];
+    const open = E.bridgeOpen(b, S.mode, effOv()), carNo = !b.modes[S.mode];
     const col = open ? '#1E6B45' : '#B43D1A';
     const icon = L.divIcon({ className: '', html: `<div class="brg" style="background:${col}"></div>`, iconSize: [16, 16] });
-    L.marker([b.lat, b.lng], { icon, title: b.name }).bindPopup(`<b>${esc(b.name)}</b><br>${open ? 'Usable for this travel mode' : carNo ? 'Not open to this travel mode' : 'Assume closed after a major quake'}${b.note ? '<br><small>' + esc(b.note) + '</small>' : ''}${S.overrides[b.id] ? '<br><small>Field report: marked ' + S.overrides[b.id] + '</small>' : ''}`).addTo(lyBr);
+    L.marker([b.lat, b.lng], { icon, title: b.name }).bindPopup(`<b>${esc(b.name)}</b><br>${carNo ? 'Not open to this travel mode' : esc(bridgeReason(b))}${b.note ? '<br><small>' + esc(b.note) + '</small>' : ''}${S.overrides[b.id] ? '<br><small>Field report: marked ' + S.overrides[b.id] + '</small>' : ''}`).addTo(lyBr);
   }
   $('#bridgeList').innerHTML = DATA.bridges.map(b => {
     const o = S.overrides[b.id] || '';
-    return `<div class="member" style="grid-template-columns:1fr auto"><div><b>${esc(b.name)}</b><div class="meta">Default: ${b.quake === 'resilient' ? 'expected usable' : 'assume closed'}${b.id === 'tilikum' ? ' · no cars' : ''}${!b.modes.foot ? ' · freeway, no walking' : ''}</div></div>
-    <select data-br="${b.id}" style="width:auto;min-height:36px"><option value="">Default</option><option value="open"${o === 'open' ? ' selected' : ''}>Open</option><option value="closed"${o === 'closed' ? ' selected' : ''}>Closed</option></select></div>`;
+    return `<div class="member" style="grid-template-columns:1fr auto"><div><b>${esc(b.name)}</b><div class="meta">${esc(bridgeReason(b))}${b.id === 'tilikum' ? ' · no cars' : ''}${!b.modes.foot ? ' · freeway, no walking' : ''}</div></div>
+    <select data-br="${b.id}" style="width:auto;min-height:36px"><option value="">Scenario</option><option value="open"${o === 'open' ? ' selected' : ''}>Open</option><option value="closed"${o === 'closed' ? ' selected' : ''}>Closed</option></select></div>`;
   }).join('');
 }
 function drawBeecn() {
@@ -235,6 +279,63 @@ function addByPhone() {
     const id = 'p-' + uid(); S.members[id] = { id, name: n.slice(0, 40), tel: t, email: e, group: b.querySelector('#fpG').value, status: 'none', src: 'added by hand' }; save(); renderMembers();
   });
 }
+
+/* ---------- family registration: saved on the phone and sent to The Prepared House (Google Form → Sheet) ---------- */
+const REG = { action: 'https://docs.google.com/forms/d/e/1FAIpQLScs7Q9tpp7DLg55XYlQGIQHujYcUCtt1FJEaMNLWZa_mr2xgg/formResponse',
+  e: { name: '2114033280', email: '1508725619', phone: '855516645', address: '1521778919', household: '1899940286', kids: '1551526006', contact: '1714331836', sethome: '323869231', setmeet: '124083277', regid: '988753466', source: '1429914310' } };
+async function sendReg() {
+  const r = S.reg; if (!r || !r.pending || !navigator.onLine) return;
+  const body = new URLSearchParams();
+  for (const [k, id] of Object.entries(REG.e)) if (r[k] != null && r[k] !== '') body.append('entry.' + id, r[k]);
+  try { await fetch(REG.action, { method: 'POST', mode: 'no-cors', body }); r.pending = false; r.sentAt = Date.now(); save(); renderReg(); } catch (e) { }
+}
+addEventListener('online', sendReg);
+function renderReg() {
+  const r = S.reg, top = $('#regCard'), set = $('#regSetup'); if (!top || !set) return;
+  top.innerHTML = r || S.regLater ? '' : `<div class="card"><b>Register your family</b><p class="hint" style="margin:4px 0 10px">Save your household's contact details and home address with The Prepared House, and set up home and your reunite location in one step.</p>
+    <div class="row"><button class="btn sm" data-reg>Register</button><button class="linkbtn" data-reglater>Later</button></div></div>`;
+  set.innerHTML = r ? `<div class="card"><b>${esc(r.name)}</b><div class="meta">${esc(r.email)} · ${esc(r.phone)}</div><div class="meta">${esc(r.address)}</div>
+    <div class="meta">${r.pending ? 'Waiting for a connection to send' : 'Registered ' + new Date(r.sentAt || r.ts).toLocaleDateString()}${r.contact === 'Yes' ? ' · OK to contact' : ''}</div>
+    <div class="row" style="margin-top:8px"><button class="btn ghost sm" data-reg>Edit registration</button></div></div>`
+    : `<p class="hint">Not registered yet.</p><button class="btn sm" data-reg>Register your family</button>`;
+}
+function regForm() {
+  const r = S.reg || {}, seg = (id, opts, cur) => `<div class="seg" id="${id}">${opts.map(([v, t]) => `<button data-v="${v}" aria-pressed="${v === cur}">${t}</button>`).join('')}</div>`;
+  const box = formCard(S.reg ? 'Edit registration' : 'Register your family', `
+    <label class="f" for="rgN">Your name</label><input type="text" id="rgN" maxlength="60" autocomplete="name" value="${esc(r.name || S.me.name || '')}">
+    <label class="f" for="rgE">Email</label><input type="email" id="rgE" maxlength="100" autocomplete="email" value="${esc(r.email || '')}">
+    <label class="f" for="rgP">Mobile phone</label><input type="tel" id="rgP" maxlength="30" autocomplete="tel" value="${esc(r.phone || S.me.tel || '')}">
+    <label class="f" for="rgA">Home address</label><input type="text" id="rgA" maxlength="160" autocomplete="street-address" placeholder="Street, city, ZIP" value="${esc(r.address || '')}">
+    <label class="f" for="rgH">People in your household (optional)</label><input type="number" id="rgH" min="1" max="20" inputmode="numeric" value="${esc(r.household || '')}">
+    <label class="f">Children in school or child care? (optional)</label>${seg('rgK', [['Yes', 'Yes'], ['No', 'No']], r.kids)}
+    <label class="f">Save this address as Home in the app?</label>${seg('rgSH', [['Yes', 'Yes'], ['No', 'No']], r.sethome || 'Yes')}
+    <label class="f">Where should your family reunite?</label>${seg('rgSM', [['Home', 'At home'], ['Another place', 'Somewhere else'], ['Not now', 'Not now']], r.setmeet || 'Home')}
+    <label class="check"><input type="checkbox" id="rgC"${r.contact === 'Yes' ? ' checked' : ''}> The Prepared House may contact me about home preparedness services.</label>
+    <p class="hint">Name, email, phone and home address are required. The Prepared House keeps your details to support your family plan and, only if you tick the box, to contact you about its services. Your family's live locations stay on your phones.</p>
+    <p class="warn" id="rgErr"></p>`, b => {
+    const v = id => b.querySelector(id).value.trim(), pick = id => (b.querySelector(id + ' [aria-pressed=true]') || {}).dataset?.v || '';
+    const d = { name: v('#rgN'), email: v('#rgE'), phone: v('#rgP'), address: v('#rgA'), household: v('#rgH'), kids: pick('#rgK') || 'Not answered', sethome: pick('#rgSH'), setmeet: pick('#rgSM'), contact: b.querySelector('#rgC').checked ? 'Yes' : 'No' };
+    const err = !d.name ? 'Please add your name.' : !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email) ? 'Please check your email address.' : normTel(d.phone).replace(/\D/g, '').length < 10 ? 'Please add a phone number with area code.' : d.address.length < 6 ? 'Please add your home address.' : '';
+    if (err) { b.querySelector('#rgErr').textContent = err; return false; }
+    S.reg = { ...r, ...d, regid: r.regid || 'P2S-' + uid().toUpperCase(), source: 'Reunite app ' + location.host, ts: Date.now(), pending: true };
+    if (!S.me.name) S.me.name = d.name.split(' ')[0]; S.me.tel = d.phone;
+    save(); renderMembers(); renderReg(); sendReg(); afterReg(d);
+  });
+  box.addEventListener('click', e => { const s = e.target.closest('.seg [data-v]'); if (s) s.parentElement.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === s)); });
+}
+// After registering: set Home from the address, and the reunite location, as the family chose
+async function afterReg(d) {
+  let home = S.places.find(p => /^home$/i.test(p.name));
+  if (d.sethome === 'Yes') {
+    const hits = navigator.onLine ? await geocode(d.address) : null, h = hits && hits.find(x => !x.far);
+    if (h) { if (home) Object.assign(home, { lat: h.lat, lng: h.lng, addr: d.address }); else S.places.push(home = { id: uid(), name: 'Home', lat: h.lat, lng: h.lng, addr: d.address }); save(); renderPlaces(); toast('Registered. Home saved from your address.'); }
+    else { toast("Registered. We couldn't place that address on the map, so tap your home."); goTab('setup'); return findPlace({ title: 'Where is home?', nameLabel: 'Name', mapPrompt: 'Tap your home', done: (n, la, ln, label) => { S.places.push(home = { id: uid(), name: n || 'Home', lat: la, lng: ln, addr: d.address }); save(); renderPlaces(); if (d.setmeet === 'Home') setMeet(home); } }); }
+  } else toast('Registered. Thank you.');
+  if (d.setmeet === 'Home' && home) { setMeet(home); toast('Registered. Home is saved and set as your reunite location.'); }
+  else if (d.setmeet === 'Another place') { goTab('reunite'); startPlan('meet'); $('#pickMeet').click(); }
+  renderMembers();
+}
+document.addEventListener('click', e => { if (e.target.closest('[data-reg]')) regForm(); if (e.target.closest('[data-reglater]')) { S.regLater = true; save(); renderReg(); } });
 
 /* ---------- family list ---------- */
 function renderMembers() {
@@ -553,7 +654,7 @@ async function routeLeg(target, travelers, en, label) {
     const col = p === S.me ? '#1E6B45' : p.legCol || colorOf(p.id);
     const corr = [[G, D], [G2, D2]].map(([g, d]) => lineFrom(g, d, p));
     if (!corr[0]) {   // every usable crossing is blocked: still find the best path, allowing at-risk bridges, and flag them
-      if (!G3) { const enR = { ...en, overrides: Object.fromEntries(DATA.bridges.map(b => [b.id, en.overrides[b.id] === 'closed' ? 'closed' : 'open'])) }; G3 = E.buildGrid(bounds, enR, 320); D3 = E.dijkstra(G3, E.nearestDry(G3, tgt[0], tgt[1])); }
+      if (!G3) { const enR = { ...en, overrides: Object.fromEntries(DATA.bridges.map(b => [b.id, S.overrides[b.id] === 'closed' ? 'closed' : 'open'])) }; G3 = E.buildGrid(bounds, enR, 320); D3 = E.dijkstra(G3, E.nearestDry(G3, tgt[0], tgt[1])); }
       corr[0] = lineFrom(G3, D3, p);
     }
     let opts = [], risk = [];
@@ -606,7 +707,11 @@ function routeSafety(o) {
   if ((by.liq5 || 0) + (by.liq4 || 0) >= 100) n.push(`Crosses ${fmtKm((by.liq5 || 0) + (by.liq4 || 0))} of liquefaction-prone ground: expect cracked or buckled pavement, sinkholes, broken water mains and standing water. Go slowly and test the ground.`);
   if ((by.slide || 0) >= 50) n.push(`Passes ${fmtKm(by.slide)} of mapped landslide ground: watch the slope above and below you, especially after rain. Turn back if you see fresh cracks, tilted trees or moving debris.`);
   if ((by.flood || 0) >= 50) n.push(`Runs ${fmtKm(by.flood)} through a flood zone. If water covers the road or path, turn around.`);
-  for (const nm of o.used) { const b = DATA.bridges.find(x => x.name === nm); n.push(`Crosses ${esc(nm)}${b && b.quake === 'resilient' ? ', which the app treats as quake-ready' : ', which you marked open'}. Check for closures and visible damage before you cross.`); }
+  const v = sev();
+  for (const nm of o.used) { const b = DATA.bridges.find(x => x.name === nm); if (!b) continue;
+    n.push(b.quake === 'resilient' ? `Assumes ${esc(nm)} is among the first bridges to reopen (built or upgraded for earthquakes)${v === 'major' || v === 'severe' ? '. It still needs inspection and may stay closed for hours or longer' : ''}. Check for closures and visible damage before you cross.`
+      : S.overrides[b.id] === 'open' ? `Crosses ${esc(nm)}, which you marked open. Check for closures and visible damage before you cross.`
+      : `Crosses ${esc(nm)}, assumed open in a ${SEVERITY[v].label.toLowerCase()} quake. Older bridges can close for inspection after any felt quake; have another option ready.`); }
   for (const c of o.bad) n.push(`Crosses ${esc(c.bridge.name)}, which isn't expected to be usable after a major quake${c.bridge.note ? ' (' + esc(c.bridge.note) + ')' : ' (not seismically upgraded)'}. Confirm it's open before you set out, and have another option ready.`);
   const fw = [...new Set((o.steps || []).flatMap(s => String(s.ref || '').split(';')).map(x => x.trim()).filter(x => /^(I|US|OR|WA|SR)[ -]?\d/.test(x)))];
   if (S.mode !== 'foot' && fw.length) n.push(`Uses ${esc(fw.slice(0, 4).join(', '))}: freeway bridges, overpasses and ramps may be closed for inspection after a major quake. Expect detours.`);
@@ -656,7 +761,7 @@ function drawPlan() {
 }
 function renderPlanResults() {
   const n = lastPlan.cards.length;
-  $('#routes').innerHTML = `<div class="planhead"><b>${esc(lastPlan.title)}</b><button class="linkbtn" data-editplan>Change plan</button></div>` + lastPlan.head + generalSafety() + lastPlan.cards.map(routeCard).join('') + (lastPlan.foot || '')
+  $('#routes').innerHTML = `<div class="planhead"><b>${esc(lastPlan.title)}</b><button class="linkbtn" data-editplan>Change plan</button></div>` + `<div class="notify"><b>Scenario: ${SEVERITY[sev()].label} quake.</b> ${esc(SEVERITY[sev()].desc)} These are planning assumptions from hazard maps and bridge status, not a forecast. Real closures depend on inspections, so follow official alerts.</div>` + lastPlan.head + generalSafety() + lastPlan.cards.map(routeCard).join('') + (lastPlan.foot || '')
     + `<p class="src">Expect debris, downed lines and closures the data can't show. Walking is usually the most reliable way to move after a big quake.${navigator.onLine ? '' : ' Offline: showing compass-heading lines only.'}</p><div class="hr"></div>`;
   drawPlan();
 }
@@ -916,7 +1021,7 @@ $('#setupCard').onclick = e => {
 function goTab(t) {
   $$('nav.tabs button').forEach(x => x.setAttribute('aria-selected', x.dataset.t === t));
   $$('.pane').forEach(p => p.classList.toggle('on', p.id === 't-' + t));
-  $('#sheet').classList.remove('min'); if (t === 'setup') renderPlaces(); if (t === 'reunite') { renderMeetSel(); renderPlan(); }
+  $('#sheet').classList.remove('min'); if (t === 'setup') renderPlaces(); if (t === 'reunite') { renderMeetSel(); renderPlan(); renderSev(); }
 }
 
 /* ---------- events ---------- */
@@ -949,6 +1054,7 @@ $('#pickMeet').onclick = () => findPlace({ title: 'Choose a meeting point', name
 $('#fairBtn').onclick = fairestPoint;
 $$('#modeSeg button').forEach(b => { b.setAttribute('aria-pressed', b.dataset.m === S.mode); b.onclick = () => { S.mode = b.dataset.m; save(); $$('#modeSeg button').forEach(x => x.setAttribute('aria-pressed', x === b)); drawBridges(); }; });
 $('#planBtn').onclick = planRoutes;
+$$('#sevSeg button').forEach(b => b.onclick = () => { S.severity = b.dataset.v; save(); renderSev(); drawBridges(); if (lastPlan.cards.length) planRoutes(); });
 $('#routes').onclick = e => {
   const o = e.target.closest('[data-opt]'); if (o) { const [ri, oi] = o.dataset.opt.split(':').map(Number); lastPlan.cards[ri].sel = oi; lastPlan.focus = ri; renderPlanResults(); return; }
   if (e.target.closest('[data-editplan]')) { $('#goalSeg').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
@@ -1002,7 +1108,7 @@ const netPill = () => { const p = $('#pNet'); p.className = 'pill ' + (navigator
 addEventListener('online', () => { netPill(); syncPull(); syncPush(true); }); addEventListener('offline', netPill);
 
 /* ---------- boot ---------- */
-netPill(); setGpsPill(); drawBridges(); drawBeecn(); renderMembers(); renderPlaces(); renderLayerList(); drawWui(); loadHazards(false); startSync();
+netPill(); setGpsPill(); drawBridges(); drawBeecn(); renderMembers(); renderPlaces(); renderLayerList(); drawWui(); loadHazards(false); startSync(); renderReg(); sendReg(); renderSev();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
-window.P2S_APP = { S, geocode, plan, startPlan, planRoutes, fairestPoint, loadDemo, parseCheckins, useHazards }; // for testing
+window.P2S_APP = { S, sendReg, regForm, geocode, plan, startPlan, planRoutes, fairestPoint, loadDemo, parseCheckins, useHazards }; // for testing
 }

@@ -99,3 +99,16 @@ The app always returns a path. If no route avoids bridges that are expected to b
 - People sit in groups: My household, Out-of-area contacts, and any new groups (another family next door, grandparents). "Add people to" picks the group; Edit moves someone between groups or adds a phone and email.
 - Out-of-area contacts get updates only. They aren't routed or tracked. Each has a Text update (or Email update) button, and the Check-in screen has a "Tell people outside the area" card with a plain-language family status summary, a map link and Text, Email, Share and Copy buttons. Setup adds a step: "Add an out-of-area contact" (Ready.gov advises an out-of-town contact that everyone checks in with).
 - Pick up works across groups: a neighbor can pick up the Garcias' child, and the results include "Let The Garcias know" with two ready messages (when you leave, when you have them). Go to someone offers a message to that person's group. Every plan ends with "Update out-of-area contacts".
+
+## Quake severity (Reunite screen)
+"How strong is the quake?" sets the scenario for routing, bridge status and notes:
+| Level | Reference | Bridges not built or upgraded for earthquakes | Hazard weight |
+| --- | --- | --- | --- |
+| Mild | 1993 Scotts Mills, M5.6 | Assumed open (may close briefly for inspection) | 25% |
+| Medium | Strong local quake | Closed where at least 3 of 16 approach samples (rings at 250 m and 500 m) fall on very high liquefaction ground; otherwise open with caution | 60% |
+| Major | DOGAMI Portland Hills fault M6.8 scenario | Assumed closed | 100% |
+| Severe | Cascadia Subduction Zone M9 | Assumed closed | 140% |
+Sellwood, Tilikum and Abernethy (built or upgraded for earthquakes) are assumed to reopen first at every level; routes over them in Major and Severe carry a disclaimer that they still need inspection and may stay closed for hours or longer. Field reports (Open/Closed in Map data) override the scenario. Results open with a scenario banner stating these are planning assumptions, not a forecast.
+
+## Family registration
+A "Register your family" card (Family screen) and "Your registration" (Setup) collect name, email, mobile, home address (all required), household size, whether children are in school or child care, and an unticked-by-default consent to be contacted about services. The form also asks whether to save the address as Home and where the family should reunite (at home, somewhere else, not now); the app geocodes the address, saves Home, and sets the reunite location. Registrations post to the Google Form "Path2Safe family registration" in paul@sardoch.com (responses in the Google Sheet "Path2Safe family registrations"). They queue on the phone when offline and send when back online. Edits resend with the same Registration ID.

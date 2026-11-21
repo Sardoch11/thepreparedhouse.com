@@ -99,6 +99,8 @@ textarea{min-height:90px;resize:vertical}
 .ghead .linkbtn{min-height:0;padding:0;font-size:13px}
 .opt.risky{border-color:#e7b8a8}
 .notify{background:var(--soft);border-radius:10px;padding:8px 12px;margin:10px 0}
+.check{display:grid;grid-template-columns:22px 1fr;gap:8px;align-items:start;margin-top:14px;font-size:14px}
+.check input{width:18px;height:18px;margin:2px 0 0;min-height:0}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:99px;padding:6px 12px;min-height:36px;font-size:14px;cursor:pointer}
 .chip[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
@@ -160,6 +162,7 @@ details summary{cursor:pointer;min-height:32px}
   </nav>
 
   <section class="pane on" id="t-family">
+    <div id="regCard"></div>
     <div id="setupCard"></div>
     <div class="card">
       <input id="myName" type="text" autocomplete="given-name" placeholder="Your name" aria-label="Your name">
@@ -188,6 +191,9 @@ details summary{cursor:pointer;min-height:32px}
 
   <section class="pane" id="t-reunite">
     <div id="routes"></div>
+    <label class="f" style="margin-top:0">How strong is the quake?</label>
+    <div class="seg" id="sevSeg" role="group" aria-label="Quake severity"><button data-v="mild">Mild</button><button data-v="medium">Medium</button><button data-v="major">Major</button><button data-v="severe">Severe</button></div>
+    <p class="hint" id="sevDesc"></p>
     <div class="seg" id="goalSeg" role="group" aria-label="What do you need to do?"><button data-g="meet">Meet up</button><button data-g="person">Go to someone</button><button data-g="pickup">Pick up</button></div>
     <div id="gMeet">
       <label class="f" for="meetSel">Meeting point</label>
@@ -264,7 +270,9 @@ details summary{cursor:pointer;min-height:32px}
   </section>
 
   <section class="pane" id="t-setup">
-    <h3 style="margin-top:0">Saved places</h3>
+    <h3 style="margin-top:0">Your registration</h3>
+    <div id="regSetup"></div>
+    <h3>Saved places</h3>
     <div id="places"></div>
     <div class="row"><button class="btn ghost sm" id="addPlace">Add a place</button></div>
     <details style="margin-top:22px">

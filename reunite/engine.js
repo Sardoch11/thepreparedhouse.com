@@ -123,8 +123,8 @@
         const cc = c + dc, rr = r + dr; if (cc >= 0 && rr >= 0 && cc < cols && rr < rows) water[rr * cols + cc] = 0;
       }
     }
-    const pw = env.hzPow || 1;   // >1 = extra-cautious variant: hazard cells cost disproportionately more
-    for (let i = 0; i < N; i++) cost[i] = water[i] ? Infinity : (pw === 1 ? hz[i] : Math.pow(hz[i], pw)) * (pref[i] ? PREFER : 1);
+    const pw = env.hzPow || 1, sc = env.hzScale == null ? 1 : env.hzScale;   // severity: scale how much hazard ground costs   // >1 = extra-cautious variant: hazard cells cost disproportionately more
+    for (let i = 0; i < N; i++) { const h = 1 + (hz[i] - 1) * sc; cost[i] = water[i] ? Infinity : (pw === 1 ? h : Math.pow(h, pw)) * (pref[i] ? PREFER : 1); }
     return { b, cell, cols, rows, N, hz, water, cost, toLL, toCR };
   }
 
