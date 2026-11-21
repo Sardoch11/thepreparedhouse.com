@@ -1,5 +1,5 @@
 /* Path2Safe Reunite service worker: keeps the app, map tiles you've viewed and hazard data usable offline. */
-const V = 'p2s-v1';
+const V = 'p2s-v2';
 const SHELL = ['./', 'index.html', 'app.js', 'engine.js', 'data.js', 'manifest.webmanifest', 'icon.svg',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'];
 const TILE_MAX = 2500;
