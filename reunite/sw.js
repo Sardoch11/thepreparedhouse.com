@@ -1,5 +1,5 @@
 /* Path2Safe Reunite service worker: keeps the app, map tiles you've viewed and hazard data usable offline. */
-const V = 'p2s-v5';
+const V = 'p2s-v6';
 const SHELL = ['./', 'index.html', 'app.js', 'engine.js', 'data.js', 'manifest.webmanifest', 'icon.svg',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'];
 const TILE_MAX = 2500;
@@ -12,7 +12,7 @@ async function trimTiles(c) { const ks = await c.keys(); for (let i = 0; i < ks.
 self.addEventListener('fetch', e => {
   const u = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
-  if (u.hostname.endsWith('firebaseio.com') || u.hostname.endsWith('firebasedatabase.app') || u.hostname === 'routing.openstreetmap.de') return; // live only
+  if (u.hostname.endsWith('firebaseio.com') || u.hostname.endsWith('firebasedatabase.app') || u.hostname === 'routing.openstreetmap.de' || u.hostname === 'nominatim.openstreetmap.org' || u.hostname === 'photon.komoot.io') return; // live only
   if (u.hostname === 'tile.openstreetmap.org') {       // tiles: cache first, keep what you've looked at
     e.respondWith(caches.open(V + '-tiles').then(async c => {
       const hit = await c.match(e.request); if (hit) return hit;

@@ -384,7 +384,7 @@ function loadDemo() {
 
 /* ---------- places ---------- */
 function renderPlaces() {
-  $('#places').innerHTML = S.places.length ? S.places.map(p => `<div class="member" style="grid-template-columns:1fr auto"><div><b>${esc(p.name)}</b><div class="meta">${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}${hzWarn(p)}</div></div><button class="btn ghost sm" data-delpl="${p.id}" aria-label="Remove ${esc(p.name)}">✕</button></div>`).join('') : '<p class="hint">Save home, school, work and your family meeting spots.</p>';
+  $('#places').innerHTML = S.places.length ? S.places.map(p => `<div class="member" style="grid-template-columns:1fr auto"><div><b>${esc(p.name)}</b><div class="meta">${esc(p.addr || p.lat.toFixed(5) + ', ' + p.lng.toFixed(5))}${hzWarn(p)}</div></div><button class="btn ghost sm" data-delpl="${p.id}" aria-label="Remove ${esc(p.name)}">✕</button></div>`).join('') : '<p class="hint">Save home, school, work and your family meeting spots.</p>';
 }
 
 /* ---------- name prompt (in-page, no browser dialogs) ---------- */
@@ -393,6 +393,59 @@ function askName(label, cb) {
   const pane = $('.pane.on'); pane.prepend(box); const inp = box.querySelector('input'); inp.focus(); $('#sheet').classList.remove('min');
   const done = () => { const v = inp.value.trim(); box.remove(); if (v) cb(v.slice(0, 40)); };
   box.querySelector('button').onclick = done; inp.onkeydown = e => { if (e.key === 'Enter') done(); };
+}
+
+/* ---------- find a location by address (or tap the map) ---------- */
+// OpenStreetMap Nominatim (search on request only, per its usage policy), Photon as fallback.
+const VIEWBOX = '-123.25,45.80,-122.10,45.15';
+async function geocode(q) {
+  const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 10000);
+  try {
+    const r = await fetch('https://nominatim.openstreetmap.org/search?' + new URLSearchParams({ q, format: 'jsonv2', limit: 5, countrycodes: 'us', viewbox: VIEWBOX, addressdetails: 1 }), { signal: ctl.signal });
+    const j = await r.json();
+    if (Array.isArray(j) && j.length) return j.map(x => ({ label: x.display_name.replace(/, United States$/, ''), short: x.name || x.display_name.split(',')[0], lat: +x.lat, lng: +x.lon }));
+  } catch (e) { } finally { clearTimeout(to); }
+  try {
+    const r = await fetch('https://photon.komoot.io/api/?' + new URLSearchParams({ q, limit: 5, lat: 45.52, lon: -122.67 }));
+    const j = await r.json();
+    return (j.features || []).map(f => { const p = f.properties, [ln, la] = f.geometry.coordinates;
+      const street = [p.housenumber, p.street].filter(Boolean).join(' ');
+      return { label: [p.name, street, p.city, p.state, p.postcode].filter(Boolean).join(', '), short: p.name || street || p.city, lat: la, lng: ln }; });
+  } catch (e) { return null; }
+}
+// opts: {title, nameLabel (omit to skip the name), mapPrompt, done(name, lat, lng, label)}
+function findPlace(opts) {
+  $$('.findplace').forEach(b => b.remove());
+  const box = document.createElement('div'); box.className = 'card findplace';
+  box.innerHTML = `<div class="row" style="justify-content:space-between"><b>${esc(opts.title)}</b><button class="linkbtn" data-x aria-label="Close">Cancel</button></div>
+    ${opts.nameLabel ? `<label class="f" for="fpName">${esc(opts.nameLabel)}</label><input type="text" id="fpName" maxlength="40">` : ''}
+    <label class="f" for="fpAddr">Address or place name</label>
+    <form class="row" data-f><input type="text" id="fpAddr" class="grow" autocomplete="street-address" placeholder="e.g. 1234 SE Main St, Portland"><button class="btn sm" type="submit">Search</button></form>
+    <div data-res></div>
+    <button class="linkbtn" data-map>Or tap the spot on the map</button>`;
+  const pane = $('.pane.on'); pane.prepend(box); pane.scrollTop = 0; $('#sheet').classList.remove('min');
+  const nameIn = box.querySelector('#fpName'), addrIn = box.querySelector('#fpAddr'), res = box.querySelector('[data-res]');
+  (nameIn || addrIn).focus();
+  const finish = (lat, lng, label, short) => {
+    const name = nameIn ? (nameIn.value.trim() || short || 'Place').slice(0, 40) : '';
+    if (nameIn && !nameIn.value.trim() && !short) { nameIn.focus(); return; }
+    box.remove(); opts.done(name, lat, lng, label); map.setView([lat, lng], Math.max(map.getZoom(), 15));
+  };
+  box.querySelector('[data-x]').onclick = () => box.remove();
+  box.querySelector('[data-map]').onclick = () => {
+    if (nameIn && !nameIn.value.trim()) { nameIn.focus(); nameIn.placeholder = 'Name it first'; return; }
+    pick(opts.mapPrompt || 'Tap the spot', (la, ln) => finish(la, ln, 'set on map', ''));
+  };
+  box.querySelector('[data-f]').onsubmit = async e => {
+    e.preventDefault(); const q = addrIn.value.trim(); if (q.length < 3) return;
+    if (!navigator.onLine) { res.innerHTML = '<p class="hint">Address search needs a connection. Tap the map instead.</p>'; return; }
+    res.innerHTML = '<p class="hint">Searching…</p>';
+    const hits = await geocode(/portland|oregon|\bor\b|wa\b|vancouver|\d{5}/i.test(q) ? q : q + ', Oregon');
+    if (!hits) { res.innerHTML = '<p class="hint">Search isn\'t responding. Try again, or tap the map.</p>'; return; }
+    if (!hits.length) { res.innerHTML = '<p class="hint">No match. Add the city or ZIP code, or tap the map.</p>'; return; }
+    res.innerHTML = hits.map((h, i) => `<button class="member" style="grid-template-columns:1fr;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);cursor:pointer" data-i="${i}"><span>${esc(h.label)}</span></button>`).join('');
+    res.onclick = ev => { const b = ev.target.closest('[data-i]'); if (!b) return; const h = hits[+b.dataset.i]; finish(h.lat, h.lng, h.label, h.short); };
+  };
 }
 
 /* ---------- address book ---------- */
@@ -462,8 +515,9 @@ $('#grab').onclick = () => $('#sheet').classList.toggle('min');
 $('#myName').oninput = e => { S.me.name = e.target.value.slice(0, 40); save(); renderCheckin(); drawPeople(); };
 $$('#mySt button').forEach(b => b.onclick = () => { S.me.status = b.dataset.s; S.me.ts = S.me.ts || Date.now(); save(); renderMembers(); syncPush(true); });
 $('#gpsBtn').onclick = startGps;
-$('#pickMe').onclick = () => pick('Tap where you are', (la, ln) => { Object.assign(S.me, { lat: la, lng: ln, ts: Date.now(), src: 'set on map' }); save(); renderMembers(); syncPush(true); });
-$('#addMember').onclick = () => pick('Tap where they are', (la, ln) => askName('Their name', n => { const id = uid(); S.members[id] = { id, name: n, status: 'ok', lat: la, lng: ln, ts: Date.now(), src: 'added by hand' }; save(); renderMembers(); }));
+$('#pickMe').onclick = () => findPlace({ title: 'Where are you?', mapPrompt: 'Tap where you are', done: (n, la, ln, label) => { Object.assign(S.me, { lat: la, lng: ln, ts: Date.now(), src: label === 'set on map' ? 'set on map' : 'by address' }); save(); renderMembers(); syncPush(true); } });
+$('#addMember').onclick = () => findPlace({ title: 'Add someone at a place', nameLabel: 'Their name', mapPrompt: 'Tap where they are', done: (n, la, ln) => {
+  const ex = findByName(n), id = ex ? ex.id : uid(); S.members[id] = { ...(ex || {}), id, name: n, status: (ex && ex.status !== 'none') ? ex.status : 'ok', lat: la, lng: ln, ts: Date.now(), src: 'added by hand' }; save(); renderMembers(); } });
 $('#demoBtn').onclick = loadDemo;
 $('#members').onclick = e => {
   const z = e.target.closest('[data-zoom]'), d = e.target.closest('[data-del]');
@@ -473,7 +527,7 @@ $('#members').onclick = e => {
   if (d) { delete S.members[d.dataset.del]; save(); renderMembers(); }
 };
 $('#meetSel').onchange = e => { const v = e.target.value; if (!v || v === 'cur') return; const o = meetOptions().find(x => x.k === v); if (o) setMeet(o); };
-$('#pickMeet').onclick = () => pick('Tap the meeting point', (la, ln) => askName('Name this meeting point', n => setMeet({ name: n, lat: la, lng: ln })));
+$('#pickMeet').onclick = () => findPlace({ title: 'Choose a meeting point', nameLabel: 'Name (optional)', mapPrompt: 'Tap the meeting point', done: (n, la, ln) => setMeet({ name: n, lat: la, lng: ln }) });
 $('#fairBtn').onclick = fairestPoint;
 $$('#modeSeg button').forEach(b => { b.setAttribute('aria-pressed', b.dataset.m === S.mode); b.onclick = () => { S.mode = b.dataset.m; save(); $$('#modeSeg button').forEach(x => x.setAttribute('aria-pressed', x === b)); drawBridges(); }; });
 $('#planBtn').onclick = planRoutes;
@@ -501,7 +555,7 @@ $('#layerList').onchange = e => {
 $('#lyBr').onchange = e => e.target.checked ? map.addLayer(lyBr) : map.removeLayer(lyBr);
 $('#lyBe').onchange = e => e.target.checked ? map.addLayer(lyBe) : map.removeLayer(lyBe);
 $('#bridgeList').onchange = e => { const s = e.target.closest('[data-br]'); if (!s) return; if (s.value) S.overrides[s.dataset.br] = s.value; else delete S.overrides[s.dataset.br]; save(); drawBridges(); };
-$('#addPlace').onclick = () => pick('Tap the place', (la, ln) => askName('Name (Home, School, Work…)', n => { S.places.push({ id: uid(), name: n, lat: la, lng: ln }); save(); renderPlaces(); renderMembers(); }));
+$('#addPlace').onclick = () => findPlace({ title: 'Save a place', nameLabel: 'Name (Home, School, Work…)', mapPrompt: 'Tap the place', done: (n, la, ln, label) => { S.places.push({ id: uid(), name: n, lat: la, lng: ln, addr: label === 'set on map' ? '' : label }); save(); renderPlaces(); renderMembers(); } });
 $('#places').onclick = e => { const d = e.target.closest('[data-delpl]'); if (d) { S.places = S.places.filter(p => p.id !== d.dataset.delpl); save(); renderPlaces(); renderMembers(); } };
 $('#fbUrl').value = S.fb.url; $('#famCode').value = S.fb.code;
 $('#newCode').onclick = () => { const a = new Uint32Array(3); crypto.getRandomValues(a); $('#famCode').value = [...a].map(x => x.toString(36)).join('-'); };

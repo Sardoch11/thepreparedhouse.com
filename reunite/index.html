@@ -132,7 +132,7 @@ details summary{cursor:pointer;min-height:32px}
       <div class="seg status" id="mySt"><button data-s="ok">I'm OK</button><button data-s="help">Need help</button><button data-s="injured">Injured</button></div>
       <div class="row" style="margin-top:10px">
         <button class="btn" id="gpsBtn">Share my GPS</button>
-        <button class="btn ghost" id="pickMe">Set my spot on map</button>
+        <button class="btn ghost" id="pickMe">Set my spot</button>
       </div>
       <p class="hint" id="myLoc">No location yet.</p>
     </div>
@@ -145,7 +145,7 @@ details summary{cursor:pointer;min-height:32px}
     </div>
     <p class="hint" id="contactsHint">Contacts stay on this phone. We never upload your address book.</p>
     <div class="row">
-      <button class="linkbtn" id="addMember">Place someone on the map</button>
+      <button class="linkbtn" id="addMember">Add someone by address or map</button>
       <button class="linkbtn" id="demoBtn">Load demo family</button>
     </div>
   </section>
@@ -156,7 +156,7 @@ details summary{cursor:pointer;min-height:32px}
     <label class="f" for="meetSel">Meeting point</label>
     <select id="meetSel"></select>
     <div class="row" style="margin-top:8px">
-      <button class="btn ghost sm" id="pickMeet">Pick on map</button>
+      <button class="btn ghost sm" id="pickMeet">Find an address or pick on map</button>
       <button class="btn ghost sm" id="fairBtn">Suggest the fairest point</button>
     </div>
     <label class="f">How people will travel</label>
@@ -210,7 +210,7 @@ details summary{cursor:pointer;min-height:32px}
     <h2>Family setup</h2>
     <h3>Saved places</h3>
     <div id="places"></div>
-    <div class="row"><button class="btn ghost sm" id="addPlace">Add a place by tapping the map</button></div>
+    <div class="row"><button class="btn ghost sm" id="addPlace">Add a place by address or map</button></div>
     <h3>Live family sharing</h3>
     <p class="hint">Everyone enters the same family code. Locations sync through a Firebase Realtime Database you control (see README). Leave blank to use text check-ins only.</p>
     <label class="f" for="fbUrl">Database URL</label><input id="fbUrl" type="url" placeholder="https://your-project-default-rtdb.firebaseio.com">
