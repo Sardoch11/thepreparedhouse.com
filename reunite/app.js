@@ -124,11 +124,21 @@ function approachRisk(b) {
   if (riskMemo.H !== H) riskMemo = { H, m: {} };
   if (riskMemo.m[b.id]) return riskMemo.m[b.id];
   let liq5 = 0, n = 0;
-  for (const r of [250, 500]) for (let k = 0; k < 8; k++) {
-    const a = k * Math.PI / 4, la = b.lat + r * Math.cos(a) / 110540, ln = b.lng + r * Math.sin(a) / (111320 * Math.cos(b.lat * Math.PI / 180));
+  for (const r of [200, 350, 500]) for (let k = 0; k < 12; k++) {
+    const a = k * Math.PI / 6, la = b.lat + r * Math.cos(a) / 110540, ln = b.lng + r * Math.sin(a) / (111320 * Math.cos(b.lat * Math.PI / 180));
+    if (nearRiver(la, ln)) continue;   // count land approaches only, not the river itself
     const h = E.hazardAt(H, la, ln); n++; if (h && h.kind === 'liq5') liq5++;
   }
-  return (riskMemo.m[b.id] = { liq5, n });
+  return (riskMemo.m[b.id] = { liq5, n, share: n ? liq5 / n : 0 });
+}
+function nearRiver(la, ln) {
+  for (const rv of DATA.rivers) for (let k = 0; k < rv.pts.length - 1; k++) {
+    const a = rv.pts[k], z = rv.pts[k + 1], kx = 111320 * Math.cos(la * Math.PI / 180), ky = 110540;
+    const px = (ln - a[1]) * kx, py = (la - a[0]) * ky, dx = (z[1] - a[1]) * kx, dy = (z[0] - a[0]) * ky, L2 = dx * dx + dy * dy;
+    const t = L2 ? Math.max(0, Math.min(1, (px * dx + py * dy) / L2)) : 0;
+    if (Math.hypot(px - t * dx, py - t * dy) < (rv.name === 'Columbia' ? 450 : 170)) return true;
+  }
+  return false;
 }
 function sevOverrides() {
   const v = sev(), o = {};
@@ -1110,5 +1120,5 @@ addEventListener('online', () => { netPill(); syncPull(); syncPush(true); }); ad
 /* ---------- boot ---------- */
 netPill(); setGpsPill(); drawBridges(); drawBeecn(); renderMembers(); renderPlaces(); renderLayerList(); drawWui(); loadHazards(false); startSync(); renderReg(); sendReg(); renderSev();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
-window.P2S_APP = { S, sendReg, regForm, geocode, plan, startPlan, planRoutes, fairestPoint, loadDemo, parseCheckins, useHazards }; // for testing
+window.P2S_APP = { get H() { return H; }, approachRisk, S, sendReg, regForm, geocode, plan, startPlan, planRoutes, fairestPoint, loadDemo, parseCheckins, useHazards }; // for testing
 }
