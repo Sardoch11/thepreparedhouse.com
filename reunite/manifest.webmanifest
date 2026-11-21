@@ -1,0 +1,10 @@
+{
+  "name": "Path2Safe Reunite",
+  "short_name": "Path2Safe",
+  "description": "Find your family after an earthquake and plan routes around hazard zones.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#F7F8F6",
+  "theme_color": "#1E6B45",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
