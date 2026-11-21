@@ -231,6 +231,7 @@ footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:var(-
 }
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}.progress span{transition:none}}
 /* v2 storm layout */.split__storm{justify-content:flex-start}.split__storm .photo{position:relative;inset:auto;flex:1 1 auto;min-height:240px}.split__storm .photo img{position:absolute;inset:0;object-position:center 40%}.photo--storm::after{background:linear-gradient(180deg,rgba(58,68,80,.15) 0%,rgba(58,68,80,.15) 55%,#3A4450 100%)}.split__storm .storm-copy{padding-top:var(--space-4)}.pair__storm{height:auto;background:var(--storm)}.pair__storm .photo{position:relative;inset:auto;height:150px}.pair__storm .fact{position:static;padding:var(--space-2) var(--space-6) var(--space-4);margin:0}.pair__safe{height:320px}@media (max-width:1000px){.pair__storm{min-height:0}.pair__storm .photo{height:170px}}@media (max-width:640px){.split__storm{min-height:0}.split__storm .photo{min-height:200px}}.signup__photo{margin:var(--space-4) 0 0}.pair:nth-child(3) .pair__storm .photo img{object-position:center 85%}[hidden]{display:none!important}
+.beta{margin-top:var(--space-4);padding-top:var(--space-6);border-top:1px solid var(--line-strong);display:flex;flex-direction:column;gap:var(--space-2);align-items:flex-start}.beta h4{margin:0;font-size:1.15rem;color:var(--ink)}.beta p{margin:0}.beta__steps{margin:0;padding-left:1.25em}.beta__steps li{margin:2px 0}.beta__note{font-size:.9rem;color:var(--muted,#5B6770)}.beta .btn{margin-top:var(--space-2)}
 </style>
 </head>
 <body>
@@ -297,6 +298,18 @@ footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:var(-
           <h3>Thank you. Your answers are in.</h3>
           <p style="margin:0">They help us understand what Portland families actually need. Want to hear what we learn, or when plan building opens?</p>
           <a class="btn btn--primary" href="#updates">Get updates</a>
+          <div class="beta">
+            <p class="label">Optional · Free test version</p>
+            <h4>Try Reunite, our family reunification app</h4>
+            <p>Reunite helps your household agree on where to meet after an earthquake and plan safe routes to each other, to a school pickup or to your meeting point. It runs in your phone's browser, with nothing to install. Your survey answers stay separate and anonymous.</p>
+            <ol class="beta__steps">
+              <li>Add your household and one out-of-area contact.</li>
+              <li>Save home, school and work, then choose a meeting point.</li>
+              <li>Plan a meet-up or a school pickup, and see which route you'd take.</li>
+            </ol>
+            <p class="beta__note">This is an early test version: practice with it, but don't rely on it in a real emergency. Follow official alerts first.</p>
+            <a class="btn btn--secondary" href="/reunite/?from=survey">Open Reunite</a>
+          </div>
         </div>
       </div>
     </div>
