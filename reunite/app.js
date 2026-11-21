@@ -2,12 +2,35 @@
 {
 const E = window.P2S_ENGINE, DATA = window.P2S_DATA;
 const CFG = {
-  liqUrl: 'https://www3.multco.us/gisagspublic/rest/services/EmergencyManagement/NHMP_HazardsData/MapServer/3/query',
   hzBounds: '-122.95,45.38,-122.35,45.68',         // Portland metro download extent (w,s,e,n)
   osrm: { foot: 'https://routing.openstreetmap.de/routed-foot/route/v1/driving/', bike: 'https://routing.openstreetmap.de/routed-bike/route/v1/driving/', car: 'https://routing.openstreetmap.de/routed-car/route/v1/driving/' },
   speed: { foot: 4.5, bike: 14, car: 30 },          // km/h fallback when no street route
   pushEveryMs: 20000, pullEveryMs: 15000, staleMin: 30
 };
+/* Map layers. "avoid" = routes steer around them; "prefer" = routes favour them; "image" = shown only. */
+const LAYERS = [
+  { id: 'liq', type: 'avoid', name: 'Liquefaction, high and very high', src: 'DOGAMI O-19-09 via Multnomah County',
+    url: 'https://www3.multco.us/gisagspublic/rest/services/EmergencyManagement/NHMP_HazardsData/MapServer/3', where: 'Class>=4', fields: 'Class', page: 1000,
+    build: fc => E.fromGeoJSON(fc, 'Class'), swatch: ['#B43D1A', '#E4572E'],
+    style: p => ({ fillColor: p.cls >= 5 ? '#B43D1A' : '#E4572E', fillOpacity: p.cls >= 5 ? 0.42 : 0.28 }) },
+  { id: 'slide', type: 'avoid', name: 'Mapped landslides', src: 'DOGAMI SLIDO 4.5',
+    url: 'https://services8.arcgis.com/8PAo5HGmvRMlF2eU/arcgis/rest/services/SLIDO_Release_4p5_wMetadata_gdb/FeatureServer/4', where: '1=1', fields: 'TYPE_MOVE', page: 2000,
+    build: fc => E.fromGeoJSON(fc, null, { kind: 'slide', cost: () => 12 }), swatch: ['#8A5A2B'],
+    style: () => ({ fillColor: '#8A5A2B', fillOpacity: 0.38 }) },
+  { id: 'flood', type: 'avoid', name: 'Flood zones (1% annual chance)', src: 'FEMA National Flood Hazard Layer',
+    url: 'https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28', where: "SFHA_TF='T'", fields: 'FLD_ZONE,ZONE_SUBTY', page: 1000,
+    build: fc => E.fromGeoJSON(fc, null, { kind: 'flood', cost: p => /FLOODWAY/i.test(p.ZONE_SUBTY || '') ? 20 : 8 }), swatch: ['#2F6FB0'],
+    style: p => ({ fillColor: '#2F6FB0', fillOpacity: p.cost >= 20 ? 0.4 : 0.26 }) },
+  { id: 'etr', type: 'prefer', name: 'Emergency transportation routes', src: 'RDPO and Metro (2025 update)',
+    url: 'https://services2.arcgis.com/McQ0OlIABe29rJJy/ArcGIS/rest/services/SSLRs_ETRs/FeatureServer/0', where: '1=1', fields: 'ROUTENAME,ROUTE_TYPE', page: 2000,
+    swatch: ['#1E6B45'], line: { color: '#1E6B45', weight: 2.5, opacity: 0.75 }, label: p => p.ROUTENAME },
+  { id: 'sslr', type: 'prefer', name: 'State seismic lifeline routes', src: 'ODOT',
+    url: 'https://services2.arcgis.com/McQ0OlIABe29rJJy/ArcGIS/rest/services/SSLRs_ETRs/FeatureServer/1', where: '1=1', fields: 'Highway,Tier,Descriptio', page: 2000,
+    swatch: ['#0B3B25'], line: { color: '#0B3B25', weight: 4, opacity: 0.7 }, label: p => `${p.Highway} (tier ${p.Tier})` },
+  { id: 'wui', type: 'image', name: 'Wildland-urban interface (wildfire)', src: 'Oregon Department of Forestry',
+    url: 'https://gis.odf.oregon.gov/ags1/rest/services/WebMercator/Fire/MapServer', layer: 6, swatch: ['#C2671B'], off: true }
+];
+const KIND = { liq5: 'very high liquefaction', liq4: 'high liquefaction', slide: 'mapped landslide', flood: 'flood zone' };
 const COLORS = ['#2F6FB0', '#8A4FB5', '#C2671B', '#0F8B8D', '#B5337A', '#5A7D1E'];
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -40,17 +63,46 @@ const idb = {
 /* ---------- map ---------- */
 const map = L.map('map', { zoomControl: true, preferCanvas: true }).setView([45.515, -122.66], 12);
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(map);
-const lyHz = L.layerGroup().addTo(map), lyBr = L.layerGroup().addTo(map), lyBe = L.layerGroup().addTo(map), lyPeople = L.layerGroup().addTo(map), lyRoutes = L.layerGroup().addTo(map);
+const lyBr = L.layerGroup().addTo(map), lyBe = L.layerGroup().addTo(map), lyPeople = L.layerGroup().addTo(map), lyRoutes = L.layerGroup().addTo(map);
 const hzRenderer = L.canvas({ padding: 0.3 });
 
-function drawHazards() {
-  lyHz.clearLayers(); if (!H) return;
-  for (const p of H.polys) {
-    const ll = p.rings.map(r => r.map(([x, y]) => [y, x]));
-    L.polygon(ll, { renderer: hzRenderer, stroke: false, fillColor: p.cls >= 5 ? '#B43D1A' : '#E4572E', fillOpacity: p.cls >= 5 ? 0.42 : 0.28, interactive: false }).addTo(lyHz);
-  }
+const LD = {};      // per layer: {group, polys, lines, meta, err}
+let PREF = [];      // preferred route lines in use
+S.layers = S.layers || {};
+LAYERS.forEach(l => { if (!S.layers[l.id]) S.layers[l.id] = { show: !l.off, use: true }; LD[l.id] = { group: L.layerGroup() }; });
+function geoLines(fc) {
+  const out = [];
+  for (const f of fc.features || []) { const g = f.geometry; if (!g) continue;
+    const parts = g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' ? g.coordinates : [];
+    for (const pts of parts) out.push({ props: f.properties || {}, ll: pts.map(([x, y]) => [y, x]) }); }
+  return out;
 }
-function env() { return { H, rivers: DATA.rivers, bridges: DATA.bridges, overrides: S.overrides, mode: S.mode }; }
+function drawLayer(l) {
+  const d = LD[l.id]; d.group.clearLayers();
+  if (l.type === 'avoid' && d.polys) for (const p of d.polys)
+    L.polygon(p.rings.map(r => r.map(([x, y]) => [y, x])), { renderer: hzRenderer, stroke: false, interactive: false, ...l.style(p) }).addTo(d.group);
+  if (l.type === 'prefer' && d.lines) for (const ln of d.lines)
+    L.polyline(ln.ll, { renderer: hzRenderer, ...l.line, interactive: true }).bindTooltip(esc(l.label(ln.props) || l.name)).addTo(d.group);
+  if (S.layers[l.id].show) map.addLayer(d.group); else map.removeLayer(d.group);
+}
+function rebuildIndex() {
+  const polys = []; PREF = [];
+  for (const l of LAYERS) { const d = LD[l.id], st = S.layers[l.id];
+    if (l.type === 'avoid' && d.polys && st.use) polys.push(...d.polys);
+    if (l.type === 'prefer' && d.lines && st.use) PREF.push(...d.lines.map(x => x.ll)); }
+  H = polys.length ? E.buildIndex(polys) : null;
+}
+/* wildfire WUI: drawn by the map server as an image for the current view */
+let wuiImg = null;
+function drawWui() {
+  const l = LAYERS.find(x => x.id === 'wui'); if (wuiImg) { map.removeLayer(wuiImg); wuiImg = null; }
+  if (!S.layers.wui.show) return;
+  const b = map.getBounds(), sz = map.getSize(), sw = map.options.crs.project(b.getSouthWest()), ne = map.options.crs.project(b.getNorthEast());
+  const u = `${l.url}/export?` + new URLSearchParams({ bbox: [sw.x, sw.y, ne.x, ne.y].join(','), bboxSR: 3857, imageSR: 3857, size: `${sz.x},${sz.y}`, format: 'png32', transparent: true, layers: 'show:' + l.layer, f: 'image' });
+  wuiImg = L.imageOverlay(u, b, { opacity: 0.45, interactive: false }).addTo(map);
+}
+map.on('moveend', drawWui);
+function env() { return { H, prefer: PREF, rivers: DATA.rivers, bridges: DATA.bridges, overrides: S.overrides, mode: S.mode }; }
 
 function drawBridges() {
   lyBr.clearLayers();
@@ -109,7 +161,7 @@ function renderMembers() {
   }).join('') : '<p class="hint">No one yet. Add people from your contacts, join a family in Setup, or paste a text check-in.</p>';
   renderCheckin(); renderMeetSel(); drawPeople();
 }
-function hzWarn(p) { if (!H || p.lat == null) return ''; const h = E.hazardAt(H, p.lat, p.lng); return h >= 5 ? ' · in a very high liquefaction zone' : h === 4 ? ' · in a high liquefaction zone' : ''; }
+function hzWarn(p) { if (!H || p.lat == null) return ''; const h = E.hazardAt(H, p.lat, p.lng); return h ? ` · inside a ${KIND[h.kind]} area` : ''; }
 
 /* ---------- GPS ---------- */
 let watchId = null;
@@ -193,34 +245,53 @@ function renderMeetSel() {
 }
 function setMeet(m) { S.meet = { name: m.name, lat: m.lat, lng: m.lng, ts: Date.now() }; save(); renderMembers(); shareMeet(); }
 
-/* ---------- hazard download ---------- */
-async function loadHazards(force) {
-  const pill = $('#pHz');
-  if (!force) {
-    try { const c = await idb.get('liq'); if (c) { useHazards(c.fc, c.meta); return; } } catch (e) { }
+/* ---------- hazard and route layers: download once, keep for offline ---------- */
+const layerKey = l => l.id === 'liq' ? 'liq' : 'L:' + l.id;
+async function fetchLayer(l) {
+  let feats = [], off = 0, more = true;
+  while (more && off < 40000) {
+    const u = l.url + '/query?' + new URLSearchParams({ where: l.where, geometry: CFG.hzBounds, geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects', outFields: l.fields, outSR: 4326, maxAllowableOffset: 0.0002, geometryPrecision: 5, resultOffset: off, resultRecordCount: l.page, f: 'geojson' });
+    const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 30000);
+    try { const j = await (await fetch(u, { signal: ctl.signal })).json(); if (j.error) throw new Error(j.error.message);
+      feats = feats.concat(j.features || []); more = !!(j.exceededTransferLimit || (j.properties && j.properties.exceededTransferLimit)); off += l.page; }
+    finally { clearTimeout(to); }
   }
-  if (!navigator.onLine) { pill.className = 'pill bad'; pill.textContent = 'No hazard data'; $('#hzInfo').textContent = 'No saved hazard data and no connection. Routes will avoid only rivers and closed bridges.'; return; }
-  pill.className = 'pill warn'; pill.textContent = 'Downloading…';
-  try {
-    let feats = [], off = 0, more = true;
-    while (more && off < 20000) {
-      const u = CFG.liqUrl + '?' + new URLSearchParams({ where: 'Class>=4', geometry: CFG.hzBounds, geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects', outFields: 'Class', outSR: 4326, maxAllowableOffset: 0.0002, geometryPrecision: 5, resultOffset: off, resultRecordCount: 1000, f: 'geojson' });
-      const j = await (await fetch(u)).json(); if (j.error) throw new Error(j.error.message);
-      feats = feats.concat(j.features || []); more = !!(j.exceededTransferLimit || (j.properties && j.properties.exceededTransferLimit)); off += 1000;
-      pill.textContent = 'Downloading… ' + feats.length;
-    }
-    const fc = { type: 'FeatureCollection', features: feats }, meta = { when: Date.now(), n: feats.length, src: 'DOGAMI O-19-09 liquefaction susceptibility (Multnomah County NHMP service)' };
-    try { await idb.set('liq', { fc, meta }); } catch (e) { }
-    useHazards(fc, meta); toast('Hazard data saved for offline use.');
-  } catch (e) {
-    pill.className = 'pill bad'; pill.textContent = 'Hazards failed'; $('#hzInfo').textContent = 'Download failed (' + e.message + '). Try again when online.';
-  }
+  return { type: 'FeatureCollection', features: feats };
 }
-function useHazards(fc, meta) {
-  H = E.buildIndex(E.fromGeoJSON(fc, 'Class')); hzMeta = meta;
-  $('#pHz').className = 'pill ok'; $('#pHz').textContent = 'Hazards saved';
-  $('#hzInfo').innerHTML = `${meta.n.toLocaleString()} high / very high liquefaction areas, saved ${new Date(meta.when).toLocaleDateString()}.<br>${esc(meta.src)}.`;
-  drawHazards(); renderMembers();
+function useLayer(l, fc, meta) {
+  const d = LD[l.id]; d.meta = meta; d.err = null;
+  if (l.type === 'avoid') d.polys = l.build(fc); else d.lines = geoLines(fc);
+  drawLayer(l);
+}
+async function loadHazards(force) {
+  const pill = $('#pHz'); let ok = 0, need = 0;
+  for (const l of LAYERS) {
+    if (l.type === 'image') continue; need++;
+    if (!force) { try { const c = await idb.get(layerKey(l)); if (c) { useLayer(l, c.fc, c.meta); ok++; continue; } } catch (e) { } }
+    if (!navigator.onLine) { LD[l.id].err = 'not saved yet'; continue; }
+    pill.className = 'pill warn'; pill.textContent = 'Downloading ' + l.name.split(' ')[0].toLowerCase() + '…'; renderLayerList();
+    try { const fc = await fetchLayer(l), meta = { when: Date.now(), n: fc.features.length };
+      try { await idb.set(layerKey(l), { fc, meta }); } catch (e) { }
+      useLayer(l, fc, meta); ok++;
+    } catch (e) { LD[l.id].err = e.name === 'AbortError' ? 'timed out' : e.message; }
+  }
+  rebuildIndex();
+  pill.className = 'pill ' + (ok === need ? 'ok' : ok ? 'warn' : 'bad');
+  pill.textContent = ok === need ? 'Hazards saved' : ok ? `Hazards ${ok}/${need}` : 'No hazard data';
+  if (force && ok) toast(ok === need ? 'All map layers saved for offline use.' : `${ok} of ${need} layers saved. Try the rest again later.`);
+  renderLayerList(); renderMembers();
+}
+function useHazards(fc, meta) { const l = LAYERS[0]; useLayer(l, fc, meta); rebuildIndex(); renderLayerList(); renderMembers(); } // tests
+function renderLayerList() {
+  $('#layerList').innerHTML = LAYERS.map(l => {
+    const d = LD[l.id], st = S.layers[l.id];
+    const status = l.type === 'image' ? 'Live from the map server; not saved offline'
+      : d.err ? 'Not available: ' + esc(d.err) : d.meta ? `${d.meta.n.toLocaleString()} features · saved ${new Date(d.meta.when).toLocaleDateString()}` : 'Waiting to download…';
+    const use = l.type === 'avoid' ? 'Avoid in routes' : l.type === 'prefer' ? 'Prefer in routes' : '';
+    const sw = l.swatch.map(c => l.type === 'prefer' ? `<span class="sw" style="background:${c};height:4px"></span>` : `<span class="sw" style="background:${c};opacity:.6"></span>`).join('');
+    return `<div class="member" style="grid-template-columns:22px 1fr"><div style="display:grid;gap:3px">${sw}</div><div><b>${esc(l.name)}</b><div class="meta">${esc(l.src)} · ${status}</div>
+      <div class="row" style="gap:16px;margin-top:4px"><label class="meta"><input type="checkbox" data-show="${l.id}"${st.show ? ' checked' : ''}> Show</label>${use ? `<label class="meta"><input type="checkbox" data-use="${l.id}"${st.use ? ' checked' : ''}> ${use}</label>` : ''}</div></div></div>`;
+  }).join('');
 }
 
 /* ---------- routing ---------- */
@@ -263,7 +334,7 @@ async function planRoutes() {
         if (!ev.bad.length && (best.kind === 'corridor' || ev.score < best.score)) best = ev;
       }
     }
-    const cEx = E.exposure(H, corridor), extra = (best.ex.m5 + best.ex.m4) - (cEx.m5 + cEx.m4);
+    const cEx = E.exposure(H, corridor), extra = best.ex.total - cEx.total;
     results.push({ p, col, best, corridor, extra: best.kind !== 'corridor' && extra > 300 ? extra : 0 });
     if (best.kind !== 'corridor') L.polyline(corridor, { color: col, weight: 3, opacity: .45, dashArray: '4 8' }).bindTooltip('Safe corridor').addTo(lyRoutes);
     L.polyline(best.line, { color: '#fff', weight: 8, opacity: .9 }).addTo(lyRoutes);
@@ -272,12 +343,13 @@ async function planRoutes() {
   const all = results.filter(r => r.best).flatMap(r => r.best.line); if (all.length) map.fitBounds(L.latLngBounds(all), { padding: [30, 30] });
   $('#routes').innerHTML = results.map(r => {
     if (r.fail) return `<div class="route" style="border-color:${r.col}"><b>${esc(r.p.name || 'You')}</b><div class="warn">No safe path found. Every crossing is closed or blocked. Stay put, shelter safely, and send a text check-in.</div></div>`;
-    const b = r.best, hzM = b.ex.m5 + b.ex.m4, pct = b.ex.len ? Math.round(100 * hzM / b.ex.len) : 0;
+    const b = r.best, hzM = b.ex.total, pct = b.ex.len ? Math.round(100 * hzM / b.ex.len) : 0;
+    const parts = Object.entries(b.ex.by).filter(([, m]) => m >= 20).sort((x, y) => y[1] - x[1]).map(([k, m]) => `${KIND[k] || k} ${fmtKm(m)}`).join(', ');
     const kind = b.kind === 'corridor' ? 'Offline safe-corridor line (follow streets that stay close to it)' : b.kind === 'street-safe' ? 'Street route steered around hazards' : 'Most direct street route (already the safest)';
     return `<div class="route" style="border-color:${r.col}"><b>${esc(r.p.name || 'You')}</b> · ${STATUS[r.p.status] || 'OK'}
       <div class="row" style="gap:14px"><span><b>${fmtKm(b.dist)}</b></span><span>about <b>${fmtMin(b.dur)}</b> in normal conditions</span></div>
       <div class="meta">${kind}${b.used.length ? ' · crosses ' + esc(b.used.join(', ')) : ''}</div>
-      <div class="meta">Through liquefaction zones: ${fmtKm(hzM)} (${pct}%)${b.ex.m5 ? ', of which very high ' + fmtKm(b.ex.m5) : ''}</div><div class="bar"><i style="width:${pct}%"></i></div>
+      <div class="meta">Through hazard areas: ${fmtKm(hzM)} (${pct}%)${parts ? ': ' + esc(parts) : ''}</div><div class="bar"><i style="width:${pct}%"></i></div>
       ${r.extra ? '<div class="warn">The street route runs through ' + fmtKm(r.extra) + ' more hazard zone than the safe corridor (thin dashed line). Where you can, use streets closer to the corridor.</div>' : ''}
       ${r.p.status !== 'ok' ? '<div class="warn">Marked ' + STATUS[r.p.status] + ': others should go to them or send help if it is safe.</div>' : ''}</div>`;
   }).join('') + `<p class="src">Expect debris, downed lines and closures the data can't show. Walking is usually the most reliable way to move after a big quake.${online ? '' : ' Offline: showing corridor lines only.'}</p>`;
@@ -289,7 +361,7 @@ async function fairestPoint() {
   const pts = people.map(p => [p.lat, p.lng]);
   const bounds = E.padBounds(pts, 3000), en = env(), G = E.buildGrid(bounds, en, 260);
   const cands = [...S.places.map(p => ({ name: p.name, lat: p.lat, lng: p.lng })), ...DATA.beecn.map(([n, la, ln]) => ({ name: n, lat: la, lng: ln }))]
-    .filter(c => c.lat > bounds.s && c.lat < bounds.n && c.lng > bounds.w && c.lng < bounds.e && E.hazardAt(H, c.lat, c.lng) < 4);
+    .filter(c => c.lat > bounds.s && c.lat < bounds.n && c.lng > bounds.w && c.lng < bounds.e && !((E.hazardAt(H, c.lat, c.lng) || {}).cost >= 8));
   if (!cands.length) return toast('No saved place or BEECN site in range. Pick one on the map.');
   const Ds = people.map(p => E.dijkstra(G, E.nearestDry(G, p.lat, p.lng)));
   let best = null;
@@ -419,7 +491,13 @@ $('#ciAdd').onclick = () => {
   save(); renderMembers(); $('#ciPaste').value = ''; $('#ciMsg').textContent = 'Added ' + r.people.map(p => p.name).join(', ') + '.';
 };
 $('#hzLoad').onclick = () => loadHazards(true);
-$('#lyHz').onchange = e => e.target.checked ? map.addLayer(lyHz) : map.removeLayer(lyHz);
+$('#layerList').onchange = e => {
+  const t = e.target, id = t.dataset.show || t.dataset.use; if (!id) return;
+  const l = LAYERS.find(x => x.id === id), st = S.layers[id];
+  if (t.dataset.show) { st.show = t.checked; if (l.type === 'image') drawWui(); else st.show ? map.addLayer(LD[id].group) : map.removeLayer(LD[id].group); }
+  else { st.use = t.checked; rebuildIndex(); renderMembers(); toast(t.checked ? `Routes now account for ${l.name.toLowerCase()}.` : `Routes now ignore ${l.name.toLowerCase()}.`); }
+  save();
+};
 $('#lyBr').onchange = e => e.target.checked ? map.addLayer(lyBr) : map.removeLayer(lyBr);
 $('#lyBe').onchange = e => e.target.checked ? map.addLayer(lyBe) : map.removeLayer(lyBe);
 $('#bridgeList').onchange = e => { const s = e.target.closest('[data-br]'); if (!s) return; if (s.value) S.overrides[s.dataset.br] = s.value; else delete S.overrides[s.dataset.br]; save(); drawBridges(); };
@@ -439,7 +517,7 @@ const netPill = () => { const p = $('#pNet'); p.className = 'pill ' + (navigator
 addEventListener('online', () => { netPill(); syncPull(); syncPush(true); }); addEventListener('offline', netPill);
 
 /* ---------- boot ---------- */
-netPill(); setGpsPill(); drawBridges(); drawBeecn(); renderMembers(); renderPlaces(); loadHazards(false); startSync();
+netPill(); setGpsPill(); drawBridges(); drawBeecn(); renderMembers(); renderPlaces(); renderLayerList(); drawWui(); loadHazards(false); startSync();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 window.P2S_APP = { S, planRoutes, fairestPoint, loadDemo, parseCheckins, useHazards }; // for testing
 }

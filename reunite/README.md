@@ -3,7 +3,7 @@
 A phone-first web app that helps a family find each other after a major Portland earthquake:
 
 - **Where is everyone?** Each phone shares its GPS position and status (OK / Need help / Injured).
-- **What's dangerous?** Real DOGAMI liquefaction susceptibility zones (high and very high), Willamette and Columbia bridge status, and Portland's 50 BEECN help points.
+- **What's dangerous?** Real map layers for the Portland metro area: DOGAMI liquefaction zones (high and very high), DOGAMI SLIDO landslide deposits, FEMA 1% annual-chance flood zones (floodways weighted higher), the regional emergency transportation routes and ODOT seismic lifelines (which routes favour), the ODF wildland-urban interface (shown only), bridge status and Portland's 50 BEECN help points. Each layer can be shown or hidden, and turned on or off for routing.
 - **How do we get back together?** It picks a meeting point (or suggests the *fairest* one, the point where the longest trip is shortest) and plans a route for every person that steers around hazard zones and crosses rivers only on bridges expected to stay open.
 - **Add family from your contacts.** On Android (Chrome) the app opens the phone's contact picker. On iPhone, which doesn't allow web apps to read contacts, you import a shared contact card (.vcf). Contacts stay on the phone. Each person gets an Invite button that texts them the link and family code.
 - **Works when networks don't.** Hazard data, the app and viewed map tiles are saved on the phone. Offline, it still draws a safe corridor for each person. A text check-in message carries location by SMS when data is down.

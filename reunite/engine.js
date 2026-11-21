@@ -2,6 +2,7 @@
 (function (root) {
   const R = 6371000, D2R = Math.PI / 180;
   const COST = { 5: 30, 4: 8 };        // travel penalty multipliers inside very high / high liquefaction
+  const PREFER = 0.6;                  // travel cost multiplier on emergency transportation and lifeline routes
   const BRIDGE_SNAP_M = 450;           // river crossing within this distance of a bridge midpoint counts as that bridge
 
   function hav(a, b) { // a,b = [lat,lng]
@@ -12,17 +13,21 @@
 
   /* ---------- hazard polygons + spatial index ---------- */
   // polys: [{cls, rings:[[[lng,lat],...], ...holes], bb:[w,s,e,n]}]
-  function fromGeoJSON(fc, clsField) {
+  // opts: {kind, cost(props) -> multiplier}; default = liquefaction classes 4/5
+  function fromGeoJSON(fc, clsField, opts) {
     const polys = [];
     for (const f of fc.features || []) {
       const g = f.geometry; if (!g) continue;
       const cls = +(f.properties && f.properties[clsField]) || 0;
+      const kind = opts && opts.kind ? opts.kind : 'liq' + cls;
+      const cost = opts && opts.cost ? opts.cost(f.properties || {}) : (COST[cls] || 1);
+      if (!(cost > 1)) continue;
       const parts = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
       for (const rings of parts) {
         if (!rings[0] || rings[0].length < 4) continue;
         let w = 180, s = 90, e = -180, n = -90;
         for (const [x, y] of rings[0]) { if (x < w) w = x; if (x > e) e = x; if (y < s) s = y; if (y > n) n = y; }
-        polys.push({ cls, rings, bb: [w, s, e, n] });
+        polys.push({ cls, kind, cost, rings, bb: [w, s, e, n] });
       }
     }
     return polys;
@@ -54,11 +59,12 @@
     for (let h = 1; h < p.rings.length; h++) if (inRing(p.rings[h], x, y)) return false;
     return true;
   }
+  // the costliest hazard polygon at a point, or null
   function hazardAt(H, lat, lng) {
-    if (!H) return 0;
-    const a = H.idx.get(Math.floor(lng / BK) + ',' + Math.floor(lat / BK)); if (!a) return 0;
-    let m = 0; for (const i of a) { const p = H.polys[i]; if (p.cls > m && inPoly(p, lng, lat)) m = p.cls; }
-    return m;
+    if (!H) return null;
+    const a = H.idx.get(Math.floor(lng / BK) + ',' + Math.floor(lat / BK)); if (!a) return null;
+    let best = null; for (const i of a) { const p = H.polys[i]; if ((!best || p.cost > best.cost) && inPoly(p, lng, lat)) best = p; }
+    return best;
   }
 
   /* ---------- cost grid ---------- */
@@ -76,7 +82,7 @@
     const wM = (b.e - b.w) * kx, hM = (b.n - b.s) * ky;
     const cell = Math.max(35, Math.max(wM, hM) / maxCells);
     const cols = Math.ceil(wM / cell) + 1, rows = Math.ceil(hM / cell) + 1, N = cols * rows;
-    const hz = new Uint8Array(N), water = new Uint8Array(N), cost = new Float32Array(N);
+    const hz = new Float32Array(N).fill(1), water = new Uint8Array(N), pref = new Uint8Array(N), cost = new Float32Array(N);
     const toLL = (c, r) => [b.s + r * cell / ky, b.w + c * cell / kx];
     const toCR = (lat, lng) => [Math.round((lng - b.w) * kx / cell), Math.round((lat - b.s) * ky / cell)];
     const cl = (v, m) => v < 0 ? 0 : v >= m ? m - 1 : v;
@@ -85,8 +91,8 @@
       if (p.bb[2] < b.w || p.bb[0] > b.e || p.bb[3] < b.s || p.bb[1] > b.n) continue;
       const [c0, r0] = toCR(p.bb[1], p.bb[0]), [c1, r1] = toCR(p.bb[3], p.bb[2]);
       for (let r = cl(r0, rows); r <= cl(r1, rows); r++) for (let c = cl(c0, cols); c <= cl(c1, cols); c++) {
-        const i = r * cols + c; if (hz[i] >= p.cls) continue;
-        const ll = toLL(c, r); if (inPoly(p, ll[1], ll[0])) hz[i] = p.cls;
+        const i = r * cols + c; if (hz[i] >= p.cost) continue;
+        const ll = toLL(c, r); if (inPoly(p, ll[1], ll[0])) hz[i] = p.cost;
       }
     }
     // rivers: 3-cell-wide impassable band
@@ -99,6 +105,14 @@
         }
       }
     }
+    // emergency transportation / lifeline routes: cheaper to travel (responders clear these first)
+    for (const ln of env.prefer || []) for (let k = 0; k < ln.length - 1; k++) {
+      const a = ln[k], z = ln[k + 1], steps = Math.max(1, Math.ceil(hav(a, z) / (cell / 2)));
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps, [c, r] = toCR(a[0] + (z[0] - a[0]) * t, a[1] + (z[1] - a[1]) * t);
+        if (c >= 0 && r >= 0 && c < cols && r < rows) pref[r * cols + c] = 1;
+      }
+    }
     // open bridges punch a gap
     const gap = Math.max(2, Math.ceil(160 / cell));
     for (const br of env.bridges || []) {
@@ -109,7 +123,7 @@
         const cc = c + dc, rr = r + dr; if (cc >= 0 && rr >= 0 && cc < cols && rr < rows) water[rr * cols + cc] = 0;
       }
     }
-    for (let i = 0; i < N; i++) cost[i] = water[i] ? Infinity : (COST[hz[i]] || 1);
+    for (let i = 0; i < N; i++) cost[i] = water[i] ? Infinity : hz[i] * (pref[i] ? PREFER : 1);
     return { b, cell, cols, rows, N, hz, water, cost, toLL, toCR };
   }
 
@@ -186,17 +200,19 @@
   function toLatLngs(G, idxPath) { return idxPath.map(i => G.toLL(i % G.cols, (i / G.cols) | 0)); }
 
   /* ---------- evaluating any polyline ([lat,lng] points) ---------- */
+  // metres of a line inside each hazard kind; weighted = sum of metres x (cost - 1)
   function exposure(H, line, step) {
-    step = step || 20; let len = 0, m5 = 0, m4 = 0;
+    step = step || 20; let len = 0, weighted = 0; const by = {};
     for (let k = 0; k < line.length - 1; k++) {
       const a = line[k], b = line[k + 1], d = hav(a, b); len += d;
       const n = Math.max(1, Math.round(d / step));
       for (let s = 0; s < n; s++) {
         const t = (s + 0.5) / n, h = hazardAt(H, a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t);
-        if (h >= 5) m5 += d / n; else if (h === 4) m4 += d / n;
+        if (h) { by[h.kind] = (by[h.kind] || 0) + d / n; weighted += (d / n) * (h.cost - 1); }
       }
     }
-    return { len, m5, m4 };
+    const total = Object.values(by).reduce((x, y) => x + y, 0);
+    return { len, by, total, weighted, m5: by.liq5 || 0, m4: by.liq4 || 0 };
   }
 
   function segX(p1, p2, p3, p4) { // intersection of segments in lat/lng space (fine at city scale)
@@ -220,7 +236,7 @@
     return out;
   }
 
-  function score(e) { return e.len + 10 * e.m5 + 3 * e.m4; }
+  function score(e) { return e.len + e.weighted / 3; }
 
   // waypoints for street routing: every ~1.2 km along the corridor, plus each open bridge it uses
   function viaPoints(line, env, spacing) {
@@ -243,6 +259,6 @@
     return { s: s - dLat, n: n + dLat, w: w - dLng, e: e + dLng };
   }
 
-  const api = { hav, fromGeoJSON, buildIndex, hazardAt, inPoly, buildGrid, nearestDry, dijkstra, trace, smooth, toLatLngs, exposure, crossings, bridgeOpen, score, viaPoints, padBounds, COST };
+  const api = { hav, fromGeoJSON, buildIndex, hazardAt, inPoly, buildGrid, nearestDry, dijkstra, trace, smooth, toLatLngs, exposure, crossings, bridgeOpen, score, viaPoints, padBounds, COST, PREFER };
   if (typeof module !== 'undefined') module.exports = api; else root.P2S_ENGINE = api;
 })(typeof window !== 'undefined' ? window : globalThis);
