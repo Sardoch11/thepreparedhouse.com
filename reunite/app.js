@@ -148,23 +148,117 @@ function drawPeople() {
   if (S.meet) L.marker([S.meet.lat, S.meet.lng], { icon: L.divIcon({ className: '', html: `<div class="flag">Meet: ${esc(S.meet.name)}</div>`, iconSize: null, iconAnchor: [0, 12] }), zIndexOffset: 2000 }).addTo(lyPeople);
 }
 
+/* ---------- groups: household, other families (neighbors, relatives), out-of-area contacts ---------- */
+function groups() {
+  if (!Array.isArray(S.groups) || !S.groups.length) S.groups = [{ id: 'home', name: 'My household', kind: 'family' }, { id: 'out', name: 'Out-of-area contacts', kind: 'notify' }];
+  return S.groups;
+}
+const groupOf = m => groups().find(g => g.id === (m && m.group || 'home')) || groups()[0];
+const isNotify = m => m !== S.me && groupOf(m).kind === 'notify';
+const smsHref = (tel, body) => `sms:${normTel(tel)}${isIOS ? '&' : '?'}body=${encodeURIComponent(body)}`;
+const mapLink = (la, ln) => `https://www.openstreetmap.org/?mlat=${la.toFixed(5)}&mlon=${ln.toFixed(5)}#map=16/${la.toFixed(5)}/${ln.toFixed(5)}`;
+function whereIs(p) {
+  if (p.lat == null) return 'location not shared';
+  const near = S.places.map(x => ({ x, d: E.hav([p.lat, p.lng], [x.lat, x.lng]) })).sort((a, b) => a.d - b.d)[0];
+  return near && near.d < 300 ? 'at ' + near.x.name : 'near ' + p.lat.toFixed(4) + ', ' + p.lng.toFixed(4);
+}
+// Plain-language update for relatives and friends outside the area
+function statusSummary() {
+  const t = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const me = `${S.me.name || 'I'}${S.me.name ? ' is' : "'m"} ${STATUS[S.me.status] === 'OK' ? 'OK' : STATUS[S.me.status].toLowerCase()}${S.me.lat != null ? ' ' + whereIs(S.me) : ''}`;
+  const fam = Object.values(S.members).filter(m => groupOf(m).id === 'home').map(m => m.lat == null ? `${m.name}: not heard from yet` : `${m.name}: ${STATUS[m.status] || 'OK'} ${whereIs(m)} (${ago(m.ts)})`);
+  return `Path2Safe update (${t}): ${me}.${fam.length ? ' ' + fam.join('; ') + '.' : ''}${S.meet ? ' Family meeting point: ' + S.meet.name + '.' : ''}${S.me.lat != null ? ' Map: ' + mapLink(S.me.lat, S.me.lng) : ''} Please text rather than call; local lines may be jammed. I'll send another update.`;
+}
+// Buttons to send one message to a set of people: one Text button each, Email all, Share, Copy
+function notifyButtons(people, text, subject) {
+  const withTel = people.filter(p => p.tel).slice(0, 8), emails = people.filter(p => p.email && !p.tel).map(p => p.email);
+  const key = 'n' + uid(); NOTE[key] = text;
+  return `<div class="row" style="margin-top:8px;flex-wrap:wrap">${withTel.map(p => `<a class="btn ghost sm" style="text-decoration:none" href="${smsHref(p.tel, text)}">Text ${esc(p.name)}</a>`).join('')}
+    ${emails.length ? `<a class="btn ghost sm" style="text-decoration:none" href="mailto:?bcc=${encodeURIComponent(emails.join(','))}&subject=${encodeURIComponent(subject || 'Path2Safe update')}&body=${encodeURIComponent(text)}">Email ${emails.length === 1 ? esc(people.find(p => p.email === emails[0]).name) : emails.length + ' people'}</a>` : ''}
+    ${navigator.share ? `<button class="btn ghost sm" data-share="${key}">Share…</button>` : ''}<button class="btn ghost sm" data-copy="${key}">Copy</button></div>
+    ${!withTel.length && !emails.length ? '<p class="hint">No phone numbers saved for them yet. Use Share or Copy, or add numbers under Family.</p>' : ''}`;
+}
+const NOTE = {};
+document.addEventListener('click', async e => {
+  const s = e.target.closest('[data-share]'), c = e.target.closest('[data-copy]');
+  if (s) { try { await navigator.share({ text: NOTE[s.dataset.share] }); } catch (err) { } }
+  if (c) { try { await navigator.clipboard.writeText(NOTE[c.dataset.copy]); toast('Copied. Paste it into a message.'); } catch (err) { toast(NOTE[c.dataset.copy], 8000); } }
+});
+
+// Small form card used for new groups, adding by phone, and editing people
+function formCard(title, html, onSave, extra) {
+  $$('.findplace').forEach(b => b.remove());
+  const box = document.createElement('div'); box.className = 'card findplace';
+  box.innerHTML = `<div class="row" style="justify-content:space-between"><b>${esc(title)}</b><button class="linkbtn" data-x>Cancel</button></div>${html}
+    <div class="row" style="margin-top:12px"><button class="btn sm" data-save>Save</button>${extra || ''}</div>`;
+  const pane = $('.pane.on'); pane.prepend(box); pane.scrollTop = 0; $('#sheet').classList.remove('min');
+  box.querySelector('[data-x]').onclick = () => box.remove();
+  box.querySelector('[data-save]').onclick = () => { if (onSave(box) !== false) box.remove(); };
+  const f = box.querySelector('input'); if (f) f.focus();
+  return box;
+}
+const groupOptions = sel => groups().map(g => `<option value="${esc(g.id)}"${g.id === sel ? ' selected' : ''}>${esc(g.name)}</option>`).join('');
+function newGroup() {
+  formCard('New group', `<label class="f" for="fgName">Name</label><input type="text" id="fgName" maxlength="40" placeholder="e.g. The Garcias next door, Grandparents">
+    <label class="f">What's this group for?</label>
+    <div class="seg" id="fgKind"><button data-k="family" aria-pressed="true">Family or neighbors</button><button data-k="notify" aria-pressed="false">Out-of-area updates</button></div>
+    <p class="hint">Family or neighbors: people you might route to or pick up. Out-of-area: people who just need updates.</p>`, box => {
+    const n = box.querySelector('#fgName').value.trim(); if (!n) { box.querySelector('#fgName').focus(); return false; }
+    const k = box.querySelector('#fgKind [aria-pressed=true]').dataset.k, id = 'g-' + uid();
+    groups().push({ id, name: n.slice(0, 40), kind: k }); save(); renderMembers(); $('#addGroup').value = id; toast(`Group added. Add people to ${n}.`);
+  }).querySelector('#fgKind').onclick = e => { const b = e.target.closest('[data-k]'); if (b) $$('#fgKind button').forEach(x => x.setAttribute('aria-pressed', x === b)); };
+}
+function editGroup(id) {
+  const g = groups().find(x => x.id === id); if (!g) return;
+  const box = formCard('Edit group', `<label class="f" for="fgName">Name</label><input type="text" id="fgName" maxlength="40" value="${esc(g.name)}">`, b => { const n = b.querySelector('#fgName').value.trim(); if (n) g.name = n.slice(0, 40); save(); renderMembers(); },
+    id === 'home' || id === 'out' ? '' : '<button class="btn ghost sm" data-del-g>Delete group</button>');
+  const d = box.querySelector('[data-del-g]');
+  if (d) d.onclick = () => { Object.values(S.members).forEach(m => { if (m.group === id) m.group = g.kind === 'notify' ? 'out' : 'home'; }); S.groups = groups().filter(x => x.id !== id); save(); box.remove(); renderMembers(); toast('Group deleted. Its people moved to ' + (g.kind === 'notify' ? 'Out-of-area contacts.' : 'My household.')); };
+}
+function editPerson(id) {
+  const m = S.members[id]; if (!m) return;
+  const box = formCard('Edit ' + (m.name || 'person'), `<label class="f" for="fpN">Name</label><input type="text" id="fpN" maxlength="40" value="${esc(m.name || '')}">
+    <label class="f" for="fpT">Mobile number</label><input type="tel" id="fpT" maxlength="30" value="${esc(m.tel || '')}">
+    <label class="f" for="fpE">Email</label><input type="email" id="fpE" maxlength="80" value="${esc(m.email || '')}">
+    <label class="f" for="fpG">Group</label><select id="fpG">${groupOptions(m.group || 'home')}</select>`, b => {
+    m.name = b.querySelector('#fpN').value.trim().slice(0, 40) || m.name; m.tel = b.querySelector('#fpT').value.trim(); m.email = b.querySelector('#fpE').value.trim(); m.group = b.querySelector('#fpG').value; save(); renderMembers();
+  }, '<button class="btn ghost sm" data-rm>Remove</button>');
+  box.querySelector('[data-rm]').onclick = () => { delete S.members[id]; save(); box.remove(); renderMembers(); };
+}
+function addByPhone() {
+  formCard('Add by name and phone', `<label class="f" for="fpN">Name</label><input type="text" id="fpN" maxlength="40">
+    <label class="f" for="fpT">Mobile number</label><input type="tel" id="fpT" maxlength="30">
+    <label class="f" for="fpE">Email (optional)</label><input type="email" id="fpE" maxlength="80">
+    <label class="f" for="fpG">Group</label><select id="fpG">${groupOptions($('#addGroup').value)}</select>`, b => {
+    const n = b.querySelector('#fpN').value.trim(), t = b.querySelector('#fpT').value.trim(), e = b.querySelector('#fpE').value.trim();
+    if (!n) { b.querySelector('#fpN').focus(); return false; }
+    const id = 'p-' + uid(); S.members[id] = { id, name: n.slice(0, 40), tel: t, email: e, group: b.querySelector('#fpG').value, status: 'none', src: 'added by hand' }; save(); renderMembers();
+  });
+}
+
 /* ---------- family list ---------- */
 function renderMembers() {
   $('#myName').value = S.me.name || '';
   $$('#mySt button').forEach(b => b.setAttribute('aria-pressed', b.dataset.s === S.me.status));
   $('#myLoc').textContent = S.me.lat != null ? `Your spot: ${S.me.lat.toFixed(5)}, ${S.me.lng.toFixed(5)} · ${S.me.src || ''} · ${ago(S.me.ts)}${hzWarn(S.me)}` : 'No location yet.';
-  const ms = Object.values(S.members);
-  $('#members').innerHTML = ms.length ? ms.map(m => {
-    const has = m.lat != null, stale = has && m.ts && Date.now() - m.ts > CFG.staleMin * 60000;
-    const tag = has ? `<span class="tag ${m.status}">${STATUS[m.status] || 'OK'}</span>` : '<span class="tag none">Not checked in</span>';
-    const meta = has ? [m.note, m.src, ago(m.ts)].filter(Boolean).map(esc).join(' · ') + hzWarn(m) : esc(m.tel || m.email || 'No phone saved');
-    const act = has ? `<button class="btn ghost sm" data-goto="${m.id}" aria-label="Plan a route to ${esc(m.name)}">Go to</button><button class="btn ghost sm" data-zoom="${m.id}" aria-label="Show ${esc(m.name)} on the map">Show</button>`
+  const row = m => {
+    const out = isNotify(m), has = m.lat != null, stale = has && m.ts && Date.now() - m.ts > CFG.staleMin * 60000;
+    const tag = out ? '<span class="tag none">Gets updates</span>' : has ? `<span class="tag ${m.status}">${STATUS[m.status] || 'OK'}</span>` : '<span class="tag none">Not checked in</span>';
+    const meta = has && !out ? [m.note, m.src, ago(m.ts)].filter(Boolean).map(esc).join(' · ') + hzWarn(m) : esc([m.tel, m.email].filter(Boolean).join(' · ') || 'No phone saved');
+    const act = out ? (m.tel ? `<a class="btn ghost sm" style="text-decoration:none" href="${smsHref(m.tel, statusSummary())}">Text update</a>` : m.email ? `<a class="btn ghost sm" style="text-decoration:none" href="mailto:${encodeURIComponent(m.email)}?subject=${encodeURIComponent('Path2Safe update')}&body=${encodeURIComponent(statusSummary())}">Email update</a>` : '')
+      : has ? `<button class="btn ghost sm" data-goto="${m.id}" aria-label="Plan a route to ${esc(m.name)}">Go to</button><button class="btn ghost sm" data-zoom="${m.id}" aria-label="Show ${esc(m.name)} on the map">Show</button>`
       : `<button class="btn ghost sm" data-invite="${m.id}" aria-label="Invite ${esc(m.name)}">Invite</button>`;
-    return `<div class="member"><div class="dot${has ? '' : ' none'}" style="background:${colorOf(m.id)}">${esc((m.name || '?').slice(0, 2).toUpperCase())}</div>
-      <div><b>${esc(m.name)}</b> ${tag}${stale ? ' <span class="tag stale">last seen ' + ago(m.ts) + '</span>' : ''}
+    return `<div class="member"><div class="dot${has && !out ? '' : ' none'}" style="background:${colorOf(m.id)}">${esc((m.name || '?').slice(0, 2).toUpperCase())}</div>
+      <div><b>${esc(m.name)}</b> ${tag}${stale && !out ? ' <span class="tag stale">last seen ' + ago(m.ts) + '</span>' : ''}
       <div class="meta">${meta}</div></div>
-      <div class="row">${act}<button class="btn ghost sm" data-del="${m.id}" aria-label="Remove ${esc(m.name)}">✕</button></div></div>`;
-  }).join('') : '<p class="hint">No one yet. Add people from your contacts, join a family in Setup, or paste a text check-in.</p>';
+      <div class="row">${act}<button class="btn ghost sm" data-edit="${m.id}" aria-label="Edit ${esc(m.name)}">Edit</button></div></div>`;
+  };
+  $('#members').innerHTML = groups().map(g => {
+    const ms = Object.values(S.members).filter(m => groupOf(m).id === g.id);
+    return `<div class="ghead"><b>${esc(g.name)}</b><button class="linkbtn" data-gedit="${esc(g.id)}">Rename</button></div>
+      ${ms.length ? ms.map(row).join('') : `<p class="hint" style="margin:4px 0 10px">${g.kind === 'notify' ? 'Add a relative or friend outside the area who can relay news. They get text updates and need no app.' : g.id === 'home' ? 'No one yet. Add people from your contacts, by phone, or paste a text check-in.' : 'No one yet.'}</p>`}`;
+  }).join('');
+  const ag = $('#addGroup'), cur = ag.value; ag.innerHTML = groupOptions(cur || 'home');
   renderCheckin(); renderMeetSel(); renderPlan(); drawPeople(); renderSetup();
 }
 function hzWarn(p) { if (!H || p.lat == null) return ''; const h = E.hazardAt(H, p.lat, p.lng); return h ? ` · inside a ${KIND[h.kind]} area` : ''; }
@@ -226,6 +320,9 @@ function checkinText() {
 function renderCheckin() {
   const t = checkinText(); $('#ciText').textContent = t || 'Set your location first (Family tab).';
   $('#ciSms').href = t ? 'sms:?&body=' + encodeURIComponent(t) : '#';
+  const outs = Object.values(S.members).filter(isNotify), sum = statusSummary();
+  $('#outText').textContent = sum;
+  $('#outBtns').innerHTML = outs.length ? notifyButtons(outs, sum, 'Path2Safe update') : `<p class="hint">No out-of-area contacts yet. <button class="linkbtn" data-goout>Add one under Family</button></p>` + notifyButtons([], sum);
 }
 function parseCheckins(txt) {
   const re = /Path2Safe check-in\s*[-–—]\s*(.+?):\s*(OK|NEED HELP|INJURED)\s+at\s+(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/gi, out = [];
@@ -345,7 +442,7 @@ function evaluate(line, en, steps) {
 /* ---------- what to plan: meet up, go to someone, or pick up ---------- */
 const SCHOOLISH = /school|elementary|middle|high|academy|preschool|day ?care|child ?care|daycare|reunification|campus|college/i;
 function plan() { S.plan = S.plan || { goal: 'meet', person: null, place: null, then: null, who: null, kids: [] }; return S.plan; }
-const located = () => [S.me, ...Object.values(S.members)].filter(p => p.lat != null);
+const located = () => [S.me, ...Object.values(S.members)].filter(p => p.lat != null && !isNotify(p));
 const byId = id => id === S.me.id ? S.me : S.members[id];
 const nameOf = p => p === S.me ? (S.me.name && !/^you$/i.test(S.me.name) ? S.me.name + ' (you)' : 'You') : (p.name || '?');
 function defaultWho(g) {
@@ -366,7 +463,7 @@ function renderPlan() {
   $$('#goalSeg button').forEach(b => b.setAttribute('aria-pressed', b.dataset.g === g));
   $('#gMeet').hidden = g !== 'meet'; $('#gPerson').hidden = g !== 'person'; $('#gPickup').hidden = g !== 'pickup';
   const rank = { injured: 0, help: 1, ok: 2 };
-  const ms = Object.values(S.members).filter(m => m.lat != null).sort((a, b) => (rank[a.status] ?? 3) - (rank[b.status] ?? 3));
+  const ms = Object.values(S.members).filter(m => m.lat != null && !isNotify(m)).sort((a, b) => (rank[a.status] ?? 3) - (rank[b.status] ?? 3));
   if (!ms.some(m => m.id === pl.person)) pl.person = ms[0] ? ms[0].id : null;
   const ref = S.me.lat != null ? [S.me.lat, S.me.lng] : null;
   $('#personSel').innerHTML = ms.length ? ms.map(m => `<option value="${esc(m.id)}"${m.id === pl.person ? ' selected' : ''}>${esc(m.name)} · ${STATUS[m.status] || 'OK'}${ref ? ' · ' + fmtKm(E.hav(ref, [m.lat, m.lng])) + ' away' : ''}</option>`).join('') : '<option value="">No family member has shared a location yet</option>';
@@ -375,9 +472,9 @@ function renderPlan() {
   $('#pickSel').innerHTML = places.length ? places.map(p => `<option value="${esc(p.id)}"${p.id === pl.place ? ' selected' : ''}>${esc(p.name)}</option>`).join('') : '<option value="">Save the school first</option>';
   const th = thenTarget(), opts = [S.meet ? `<option value="meet">Meeting point: ${esc(S.meet.name)}</option>` : '', ...S.places.filter(p => p.id !== pl.place).map(p => `<option value="pl:${esc(p.id)}">${esc(p.name)}</option>`), '<option value="none">Nowhere yet (route there only)</option>'];
   $('#thenSel').innerHTML = opts.join(''); $('#thenSel').value = th ? th.key : 'none';
-  const kids = Object.values(S.members);
-  $('#kidChips').innerHTML = kids.length ? kids.map(m => `<button class="chip" data-kid="${esc(m.id)}" aria-pressed="${pl.kids.includes(m.id)}">${esc(m.name)}</button>`).join('') : '<p class="hint" style="margin:0">Add your children under Family (they don\'t need a phone).</p>';
-  const who = new Set(whoIds()), all = [S.me, ...Object.values(S.members)];
+  const kids = Object.values(S.members).filter(m => !isNotify(m));
+  $('#kidChips').innerHTML = kids.length ? kids.map(m => `<button class="chip" data-kid="${esc(m.id)}" aria-pressed="${pl.kids.includes(m.id)}">${esc(m.name)}${groupOf(m).id !== 'home' ? ' · ' + esc(groupOf(m).name) : ''}</button>`).join('') : '<p class="hint" style="margin:0">Add your children under Family (they don\'t need a phone).</p>';
+  const who = new Set(whoIds()), all = [S.me, ...Object.values(S.members).filter(m => !isNotify(m))];
   $('#whoChips').innerHTML = all.map(p => {
     const off = p.lat == null || (g === 'person' && p.id === pl.person);
     return `<button class="chip" data-who="${esc(p.id)}" aria-pressed="${who.has(p.id)}"${off ? ' disabled title="' + (p.lat == null ? 'No location yet' : 'Destination') + '"' : ''}>${esc(nameOf(p))}</button>`;
@@ -450,12 +547,16 @@ async function routeLeg(target, travelers, en, label) {
   const bounds = E.padBounds([tgt, ...travelers.map(p => [p.lat, p.lng])], 2500);
   const G = E.buildGrid(bounds, en, 320), D = E.dijkstra(G, E.nearestDry(G, tgt[0], tgt[1]));
   const G2 = E.buildGrid(bounds, { ...en, hzPow: 1.7 }, 320), D2 = E.dijkstra(G2, E.nearestDry(G2, tgt[0], tgt[1]));
-  const out = [];
+  const out = []; let G3, D3;
+  const lineFrom = (g, d, p) => { const path = E.trace(g, d, E.nearestDry(g, p.lat, p.lng)); return path && [[p.lat, p.lng], ...E.toLatLngs(g, E.smooth(g, path)).slice(1, -1), tgt]; };
   for (const p of travelers) {
     const col = p === S.me ? '#1E6B45' : p.legCol || colorOf(p.id);
-    const corr = [[G, D], [G2, D2]].map(([g, d]) => { const path = E.trace(g, d, E.nearestDry(g, p.lat, p.lng)); return path && [[p.lat, p.lng], ...E.toLatLngs(g, E.smooth(g, path)).slice(1, -1), tgt]; });
-    if (!corr[0]) { out.push({ p, col, label, target, fail: true }); continue; }
-    let opts = [];
+    const corr = [[G, D], [G2, D2]].map(([g, d]) => lineFrom(g, d, p));
+    if (!corr[0]) {   // every usable crossing is blocked: still find the best path, allowing at-risk bridges, and flag them
+      if (!G3) { const enR = { ...en, overrides: Object.fromEntries(DATA.bridges.map(b => [b.id, en.overrides[b.id] === 'closed' ? 'closed' : 'open'])) }; G3 = E.buildGrid(bounds, enR, 320); D3 = E.dijkstra(G3, E.nearestDry(G3, tgt[0], tgt[1])); }
+      corr[0] = lineFrom(G3, D3, p);
+    }
+    let opts = [], risk = [];
     if (online) {
       // if the trip crosses a river, also try each other open bridge within a sensible detour
       const crossesRiver = E.crossings(corr[0], en).some(c => c.bridge), here = [p.lat, p.lng], straight = E.hav(here, tgt);
@@ -463,15 +564,26 @@ async function routeLeg(target, travelers, en, label) {
       const jobs = [streetRoute([here, tgt], S.mode, true), streetRoute(E.viaPoints(corr[0], en), S.mode), corr[1] ? streetRoute(E.viaPoints(corr[1], en), S.mode) : null, ...viaBridges.map(x => streetRoute([here, [x.b.lat, x.b.lng], tgt], S.mode))];
       const res = await Promise.all(jobs);
       res.forEach((rs, i) => (rs || []).forEach(c => opts.push({ kind: i < 3 ? ['street-direct', 'street-safe', 'street-cautious'][i] : 'street-bridge', line: c.line, dist: c.dist, dur: c.dur, steps: c.steps, ...evaluate(c.line, en, c.steps) })));
-      opts = opts.filter(o => !o.bad.length);
+      risk = opts.filter(o => o.bad.length).sort((a, b) => a.dur - b.dur); opts = opts.filter(o => !o.bad.length);
     }
     if (!opts.length) corr.forEach((ln, i) => ln && opts.push({ kind: i ? 'corridor-cautious' : 'corridor', line: ln, ...evaluate(ln, en) }));
-    opts.forEach(o => { if (o.kind.startsWith('corridor')) { o.dist = o.ex.len; o.dur = o.dist / (CFG.speed[S.mode] / 3.6); o.steps = corridorSteps(o.line, target.name); } else o.steps = simplify(o.steps).map(s => ({ text: stepText(s, target.name), road: s.name, dist: s.dist, line: s.line })); annotate(o.steps, en); });
+    if (!opts.length && !risk.length) { const ln = [[p.lat, p.lng], tgt]; opts.push({ kind: 'straight', line: ln, ...evaluate(ln, en) }); }   // no mapped path at all: compass bearing
+    if (opts.every(o => o.bad.length) && risk.length) opts.unshift(risk.shift());   // a street route with real directions beats a risky corridor
+    else if (risk.length && risk[0].dur < .75 * Math.min(...opts.map(o => o.dur || o.ex.len / (CFG.speed[S.mode] / 3.6)))) risk = [risk[0]]; else risk = [];
+    const prep = o => { if (o.kind === 'straight') { o.dist = o.ex.len; o.dur = o.dist / (CFG.speed[S.mode] / 3.6); o.steps = [{ text: `Head ${compass(bearing(o.line[0], o.line[1]))} toward ${target.name} (${fmtKm(o.dist)} in a straight line)`, dist: o.dist, line: o.line }, { text: 'Arrive at ' + target.name, dist: 0, line: [] }]; }
+      else if (o.kind.startsWith('corridor')) { o.dist = o.ex.len; o.dur = o.dist / (CFG.speed[S.mode] / 3.6); o.steps = corridorSteps(o.line, target.name); }
+      else o.steps = simplify(o.steps).map(s => ({ text: stepText(s, target.name), road: s.name, ref: s.ref, dist: s.dist, line: s.line }));
+      annotate(o.steps, en); };
+    opts.forEach(prep);
     opts.sort((a, b) => a.score - b.score);
     const keep = []; for (const o of opts) if (!keep.some(k => similar(k, o))) keep.push(o);
     opts = keep.slice(0, 3);
-    const fast = opts.reduce((a, b) => b.dur < a.dur ? b : a), calm = opts.reduce((a, b) => b.ex.total < a.ex.total ? b : a);
-    opts.forEach((o, i) => { o.tags = []; if (!i) o.tags.push('Recommended'); if (o === fast && opts.length > 1) o.tags.push('Fastest'); if (o === calm && opts.length > 1) o.tags.push('Fewest hazards'); if (!o.tags.length) o.tags.push('Backup route'); });
+    if (risk.length && !opts.some(k => similar(k, risk[0]))) { prep(risk[0]); opts.push(risk[0]); }
+    const okO = opts.filter(o => !o.bad.length && o.kind !== 'straight'), fast = okO.length > 1 ? okO.reduce((a, b) => b.dur < a.dur ? b : a) : null, calm = okO.length > 1 ? okO.reduce((a, b) => b.ex.total < a.ex.total ? b : a) : null;
+    opts.forEach((o, i) => { o.tags = [];
+      if (o.bad.length) { o.tags.push(i ? `Only if ${o.bad.map(c => c.bridge.name).join(' and ')} ${o.bad.length > 1 ? 'are' : 'is'} open` : 'Best available: risky'); return; }
+      if (o.kind === 'straight') { o.tags.push('No mapped path: compass only'); return; }
+      if (!i) o.tags.push('Recommended'); if (o === fast) o.tags.push('Fastest'); if (o === calm) o.tags.push('Fewest hazards'); if (!o.tags.length) o.tags.push('Backup route'); });
     out.push({ p, col, label, target, opts, sel: 0 });
   }
   return out;
@@ -493,6 +605,10 @@ function routeSafety(o) {
   if ((by.slide || 0) >= 50) n.push(`Passes ${fmtKm(by.slide)} of mapped landslide ground: watch the slope above and below you, especially after rain. Turn back if you see fresh cracks, tilted trees or moving debris.`);
   if ((by.flood || 0) >= 50) n.push(`Runs ${fmtKm(by.flood)} through a flood zone. If water covers the road or path, turn around.`);
   for (const nm of o.used) { const b = DATA.bridges.find(x => x.name === nm); n.push(`Crosses ${esc(nm)}${b && b.quake === 'resilient' ? ', which the app treats as quake-ready' : ', which you marked open'}. Check for closures and visible damage before you cross.`); }
+  for (const c of o.bad) n.push(`Crosses ${esc(c.bridge.name)}, which isn't expected to be usable after a major quake${c.bridge.note ? ' (' + esc(c.bridge.note) + ')' : ' (not seismically upgraded)'}. Confirm it's open before you set out, and have another option ready.`);
+  const fw = [...new Set((o.steps || []).flatMap(s => String(s.ref || '').split(';')).map(x => x.trim()).filter(x => /^(I|US|OR|WA|SR)[ -]?\d/.test(x)))];
+  if (S.mode !== 'foot' && fw.length) n.push(`Uses ${esc(fw.slice(0, 4).join(', '))}: freeway bridges, overpasses and ramps may be closed for inspection after a major quake. Expect detours.`);
+  if (o.kind === 'straight') n.push('No mapped path was found (offline, or every crossing is blocked). This is a compass bearing only. Stay put if travel looks unsafe, and send a check-in.');
   if (S.mode === 'foot' && o.dist > 15000) n.push(`That's a long walk (${fmtKm(o.dist)}). Plan water and rest stops, or check whether someone closer can go.`);
   if (o.kind.startsWith('corridor')) n.push('No street directions (offline or the routing service is down): these are compass headings along the safest line. Follow streets that stay close to it.');
   return n;
@@ -509,9 +625,10 @@ function routeCard(r, ri) {
   const b = r.opts[r.sel], hzM = b.ex.total, pct = b.ex.len ? Math.round(100 * hzM / b.ex.len) : 0;
   const parts = Object.entries(b.ex.by).filter(([, m]) => m >= 20).sort((x, y) => y[1] - x[1]).map(([k, m]) => `${KIND[k] || k} ${fmtKm(m)}`).join(', ');
   const r0 = r.opts[0], dl = (v, f) => (v >= 0 ? '+' : '−') + f(Math.abs(v));
-  const why = o => o === r0 ? (o.used.length ? 'via ' + o.used.join(', ') : 'best balance of distance and hazards') : [Math.abs(o.dist - r0.dist) > 200 ? dl(o.dist - r0.dist, fmtKm) + ' distance' : '', Math.abs(o.ex.total - r0.ex.total) > 50 ? dl(o.ex.total - r0.ex.total, fmtKm) + ' in hazard areas' : '', o.used.join(',') !== r0.used.join(',') && o.used.length ? 'via ' + o.used.join(', ') : ''].filter(Boolean).join(', ') + (o.tags.includes('Backup route') ? '. Use it if the main route is blocked' : '');
-  const choices = r.opts.length > 1 ? `<div class="opts">${r.opts.map((o, oi) => `<button class="opt" data-opt="${ri}:${oi}" aria-pressed="${oi === r.sel}"><b>${o.tags.join(' · ')}</b><span>${fmtKm(o.dist)} · ${fmtMin(o.dur)} · ${fmtKm(o.ex.total)} in hazards</span><span>${esc(why(o))}</span></button>`).join('')}</div>`
-    : '<p class="meta" style="margin:8px 0">No other route avoids hazards better than this one.</p>';
+  const why = o => o === r0 ? (o.used.length ? 'via ' + o.used.join(', ') : 'best balance of distance and hazards') : [Math.abs(o.dist - r0.dist) > 200 ? dl(o.dist - r0.dist, fmtKm) + ' distance' : '', Math.abs(o.ex.total - r0.ex.total) > 50 ? dl(o.ex.total - r0.ex.total, fmtKm) + ' in hazard areas' : '', o.used.join(',') !== r0.used.join(',') && o.used.length ? 'via ' + o.used.join(', ') : ''].filter(Boolean).join(', ') + (o.tags.includes('Backup route') ? '. Use it if the main route is blocked' : '') + (o.bad.length && o !== r0 ? '. Much shorter, but only if that bridge is open' : '');
+  const choices = r.opts.length > 1 ? `<div class="opts">${r.opts.map((o, oi) => `<button class="opt${o.bad.length ? ' risky' : ''}" data-opt="${ri}:${oi}" aria-pressed="${oi === r.sel}"><b>${o.tags.join(' · ')}</b><span>${fmtKm(o.dist)} · ${fmtMin(o.dur)} · ${fmtKm(o.ex.total)} in hazards</span><span>${esc(why(o))}</span></button>`).join('')}</div>`
+    : b.bad.length ? '<div class="warn" style="margin:8px 0"><b>Best available path, not a safe one.</b> Every crossing on this trip is at risk. Check bridge status first, or wait where you are if that\'s safer.</div>'
+    : b.kind === 'straight' ? '' : '<p class="meta" style="margin:8px 0">No other route avoids hazards better than this one.</p>';
   const notes = routeSafety(b);
   const tp = r.target.person, sms = tp && r.p === S.me && tp.tel ? `<div class="row" style="margin-top:6px"><a class="btn ghost sm" style="text-decoration:none" href="sms:${encodeURIComponent(tp.tel)}${isIOS ? '&' : '?'}body=${encodeURIComponent(onMyWayText(r))}">Text ${esc(tp.name)} you're coming</a></div>` : '';
   const steps = b.steps.map(s => `<li><span>${esc(s.text)}</span>${s.dist >= 15 ? `<span class="meta"> · ${fmtKm(s.dist)}</span>` : ''}${s.warn && s.warn.length ? `<div class="stepwarn">⚠ ${esc(s.warn.join('; '))}</div>` : ''}</li>`).join('');
@@ -537,7 +654,7 @@ function drawPlan() {
 }
 function renderPlanResults() {
   const n = lastPlan.cards.length;
-  $('#routes').innerHTML = `<div class="planhead"><b>${esc(lastPlan.title)}</b><button class="linkbtn" data-editplan>Change plan</button></div>` + lastPlan.head + generalSafety() + lastPlan.cards.map(routeCard).join('')
+  $('#routes').innerHTML = `<div class="planhead"><b>${esc(lastPlan.title)}</b><button class="linkbtn" data-editplan>Change plan</button></div>` + lastPlan.head + generalSafety() + lastPlan.cards.map(routeCard).join('') + (lastPlan.foot || '')
     + `<p class="src">Expect debris, downed lines and closures the data can't show. Walking is usually the most reliable way to move after a big quake.${navigator.onLine ? '' : ' Offline: showing compass-heading lines only.'}</p><div class="hr"></div>`;
   drawPlan();
 }
@@ -567,8 +684,26 @@ async function planRoutes() {
     const th = thenTarget();
     if (th && E.hav([th.lat, th.lng], [target.lat, target.lng]) > 80) leg2 = await routeLeg(th, [{ id: 'leg2', lat: target.lat, lng: target.lng, status: 'ok', legCol: '#5B6770' }], en, `Then ${esc(target.name)} → ${esc(th.name)}${kids.length ? ' with ' + esc(kids.join(', ')) : ''}`);
   }
+  // Messages to the families involved and to out-of-area contacts
+  const mine = results.find(r => r.p === S.me) || results[0], eta = mine && mine.opts ? fmtMin(mine.opts[0].dur) : '', meN = S.me.name || 'Your family member';
+  const recips = g => Object.values(S.members).filter(m => groupOf(m).id === g.id && !pl.kids.includes(m.id) && (m.tel || m.email) && !(target.person && m.id === target.person.id));
+  if (g === 'pickup' && kids.length) {
+    const th = thenTarget(), gs = [...new Set(pl.kids.map(id => S.members[id]).filter(Boolean).map(groupOf))];
+    for (const grp of gs) {
+      const ks = pl.kids.map(id => S.members[id]).filter(m => m && groupOf(m) === grp).map(m => m.name).join(' and '), rc = recips(grp);
+      const onWay = `Path2Safe: ${meN} here. I'm heading to ${target.name} to pick up ${ks}${th ? ' and bring them to ' + th.name : ''}. About ${eta} in normal conditions, likely longer. I'll text when I have them.`;
+      const have = `Path2Safe: ${meN} here. I have ${ks} and we're OK.${th ? ' Taking them to ' + th.name + '.' : ''} ${checkinText() || ''}`;
+      head += `<div class="notify"><b>Let ${esc(grp.name)} know</b>${rc.length ? '' : '<p class="hint" style="margin:4px 0">No numbers saved for this group yet.</p>'}<div class="meta" style="margin-top:6px">When you leave:</div>${notifyButtons(rc, onWay, 'Picking up ' + ks)}<div class="meta" style="margin-top:8px">When you have them:</div>${notifyButtons(rc, have, ks + ' picked up')}</div>`;
+    }
+  }
+  if (g === 'person') {
+    const grp = groupOf(target.person), rc = recips(grp);
+    if (rc.length) head += `<div class="notify"><b>Let ${esc(grp.name)} know</b>${notifyButtons(rc, `Path2Safe: ${meN} is heading to ${target.person.name} (marked ${STATUS[target.person.status] || 'OK'}). About ${eta} in normal conditions. I'll update you.`, 'Going to ' + target.person.name)}</div>`;
+  }
+  const outs = Object.values(S.members).filter(isNotify);
+  const foot = outs.length ? `<div class="notify"><b>Update out-of-area contacts</b>${notifyButtons(outs, statusSummary(), 'Path2Safe update')}</div>` : '';
   const cards = [...results, ...leg2], meIdx = cards.findIndex(r => r.p === S.me);
-  lastPlan = { cards, head, focus: meIdx >= 0 ? meIdx : 0, title: g === 'person' ? 'Routes to ' + target.name : g === 'pickup' ? 'Pickup at ' + target.name : 'Routes to ' + target.name,
+  lastPlan = { cards, head, foot, focus: meIdx >= 0 ? meIdx : 0, title: g === 'person' ? 'Routes to ' + target.name : g === 'pickup' ? 'Pickup at ' + target.name : 'Routes to ' + target.name,
     flag: g === 'pickup' ? L.marker([target.lat, target.lng], { icon: L.divIcon({ className: '', html: `<div class="flag">Pick up: ${esc(target.name)}</div>`, iconSize: null, iconAnchor: [0, 12] }), zIndexOffset: 2000 }) : null };
   renderPlanResults();
   const all = cards.filter(r => r.opts).flatMap(r => r.opts.flatMap(o => o.line)); if (all.length) map.fitBounds(L.latLngBounds(all), { padding: [30, 30] });
@@ -580,7 +715,7 @@ function startPlan(goal, set) {
   if (goal === 'pickup' && !(set && set.place)) { const cur = S.places.find(p => p.id === pl.place), sch = S.places.find(p => SCHOOLISH.test(p.name)); if (sch && !(cur && SCHOOLISH.test(cur.name))) pl.place = sch.id; } save(); goTab('reunite'); renderPlan(); $('#routes').innerHTML = ''; }
 
 async function fairestPoint() {
-  const people = [S.me, ...Object.values(S.members)].filter(p => p.lat != null);
+  const people = located();
   if (people.length < 2) return toast('Need at least two people with locations.');
   const pts = people.map(p => [p.lat, p.lng]);
   const bounds = E.padBounds(pts, 3000), en = env(), G = E.buildGrid(bounds, en, 260);
@@ -709,7 +844,7 @@ function addContacts(list) {
     if (!name && !tel) continue;
     const ex = Object.values(S.members).find(m => (tel && m.tel && normTel(m.tel) === normTel(tel)) || (name && (m.name || '').toLowerCase() === name.toLowerCase()));
     if (ex) { ex.tel = ex.tel || tel; ex.email = ex.email || email; continue; }
-    const id = 'c-' + uid(); S.members[id] = { id, name: name || tel, tel, email, status: 'none', src: 'from contacts' }; n++;
+    const id = 'c-' + uid(); S.members[id] = { id, name: name || tel, tel, email, group: $('#addGroup').value || 'home', status: 'none', src: 'from contacts' }; n++;
   }
   save(); renderMembers();
   toast(n ? `Added ${n} ${n === 1 ? 'person' : 'people'}. Tap Invite so they can share where they are.` : 'Already on your list.', 4500);
@@ -754,11 +889,12 @@ $('#vcfInput').onchange = async e => {
   e.target.value = ''; out.length ? addContacts(out) : toast('No contacts found in that file.');
 };
 
-/* ---------- getting started: five steps, shown until done ---------- */
+/* ---------- getting started: six steps, shown until done ---------- */
 const STEPS = [
   { k: 'name', t: 'Add your name', done: () => !!(S.me.name || '').trim(), go: () => $('#myName').focus() },
   { k: 'spot', t: 'Share or set your location', done: () => S.me.lat != null, go: () => $('#pickMe').click() },
   { k: 'family', t: 'Add your family', done: () => Object.keys(S.members).length > 0, go: () => (hasPicker ? $('#pickContacts') : $('#addMember')).click() },
+  { k: 'out', t: 'Add an out-of-area contact', done: () => Object.values(S.members).some(isNotify), go: () => { $('#addGroup').value = 'out'; addByPhone(); } },
   { k: 'places', t: 'Save home, school and work', done: () => S.places.length > 0, go: () => { goTab('setup'); $('#addPlace').click(); } },
   { k: 'meet', t: 'Choose a meeting point', done: () => !!S.meet, go: () => { goTab('reunite'); $('#pickMeet').click(); } }
 ];
@@ -793,15 +929,18 @@ $$('#mySt button').forEach(b => b.onclick = () => { S.me.status = b.dataset.s; S
 $('#gpsBtn').onclick = startGps;
 $('#pickMe').onclick = () => findPlace({ title: 'Where are you?', mapPrompt: 'Tap where you are', done: (n, la, ln, label) => { Object.assign(S.me, { lat: la, lng: ln, ts: Date.now(), src: label === 'set on map' ? 'set on map' : 'by address' }); save(); renderMembers(); syncPush(true); } });
 $('#addMember').onclick = () => findPlace({ title: 'Add someone at a place', nameLabel: 'Their name', mapPrompt: 'Tap where they are', done: (n, la, ln) => {
-  const ex = findByName(n), id = ex ? ex.id : uid(); S.members[id] = { ...(ex || {}), id, name: n, status: (ex && ex.status !== 'none') ? ex.status : 'ok', lat: la, lng: ln, ts: Date.now(), src: 'added by hand' }; save(); renderMembers(); } });
+  const ex = findByName(n), id = ex ? ex.id : uid(); S.members[id] = { ...(ex || {}), id, name: n, group: ex ? ex.group : ($('#addGroup').value || 'home'), status: (ex && ex.status !== 'none') ? ex.status : 'ok', lat: la, lng: ln, ts: Date.now(), src: 'added by hand' }; save(); renderMembers(); } });
 $('#demoBtn').onclick = loadDemo;
+$('#newGroup').onclick = newGroup;
+$('#addPhone').onclick = addByPhone;
 $('#members').onclick = e => {
   const z = e.target.closest('[data-zoom]'), d = e.target.closest('[data-del]');
   const iv = e.target.closest('[data-invite]');
   if (iv) invite(S.members[iv.dataset.invite]);
   const gt = e.target.closest('[data-goto]'); if (gt) startPlan('person', { person: gt.dataset.goto });
+  const ed = e.target.closest('[data-edit]'); if (ed) editPerson(ed.dataset.edit);
+  const ge = e.target.closest('[data-gedit]'); if (ge) editGroup(ge.dataset.gedit);
   if (z) { const m = S.members[z.dataset.zoom]; if (m.lat == null) return; map.setView([m.lat, m.lng], 15); if (innerWidth <= 760) $('#sheet').classList.add('min'); }
-  if (d) { delete S.members[d.dataset.del]; save(); renderMembers(); }
 };
 $('#meetSel').onchange = e => { const v = e.target.value; if (!v || v === 'cur') return; const o = meetOptions().find(x => x.k === v); if (o) setMeet(o); };
 $('#pickMeet').onclick = () => findPlace({ title: 'Choose a meeting point', nameLabel: 'Name (optional)', mapPrompt: 'Tap the meeting point', done: (n, la, ln) => setMeet({ name: n, lat: la, lng: ln }) });
@@ -820,6 +959,7 @@ $('#thenSel').onchange = e => { plan().then = e.target.value; save(); };
 $('#kidChips').onclick = e => { const c = e.target.closest('[data-kid]'); if (!c) return; const k = plan().kids, id = c.dataset.kid; k.includes(id) ? k.splice(k.indexOf(id), 1) : k.push(id); save(); renderPlan(); };
 $('#whoChips').onclick = e => { const c = e.target.closest('[data-who]'); if (!c || c.disabled) return; const w = whoIds(), id = c.dataset.who; plan().who = w.includes(id) ? w.filter(x => x !== id) : [...w, id]; save(); renderPlan(); };
 $('#pickSchool').onclick = () => findPlace({ title: 'School or release site', nameLabel: 'Name (for example, Lincoln High School)', mapPrompt: 'Tap the school', done: (n, la, ln, label) => { const id = uid(); S.places.push({ id, name: n, lat: la, lng: ln, addr: label === 'set on map' ? '' : label }); plan().place = id; save(); renderPlaces(); renderMembers(); } });
+$('#outBtns').addEventListener('click', e => { if (e.target.closest('[data-goout]')) { goTab('family'); $('#addGroup').value = 'out'; addByPhone(); } });
 $('#ciCopy').onclick = async () => { const t = checkinText(); if (!t) return toast('Set your location first.'); try { await navigator.clipboard.writeText(t); toast('Copied. Paste it into a text message.'); } catch (e) { toast('Copy blocked: press and hold the message to copy.'); } };
 $('#ciAdd').onclick = () => {
   const r = parseCheckins($('#ciPaste').value);
