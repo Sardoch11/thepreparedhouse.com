@@ -1,5 +1,5 @@
 /* Path2Safe Reunite service worker: keeps the app, map tiles you've viewed and hazard data usable offline. */
-const V = 'p2s-v8';
+const V = 'p2s-v9';
 const SHELL = ['./', 'index.html', 'app.js', 'engine.js', 'data.js', 'manifest.webmanifest', 'icon.svg',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'];
 const TILE_MAX = 2500;
@@ -25,7 +25,7 @@ self.addEventListener('fetch', e => {
     return;
   }
   if (u.origin === location.origin) {                    // app files: fresh when online, saved copy when offline
-    e.respondWith(fetch(e.request).then(r => { if (r.ok) { const cp = r.clone(); caches.open(V).then(c => c.put(e.request, cp)); } return r; })
+    e.respondWith(fetch(e.request, { cache: 'no-cache' }).then(r => { if (r.ok) { const cp = r.clone(); caches.open(V).then(c => c.put(e.request, cp)); } return r; })
       .catch(() => caches.match(e.request, { ignoreSearch: true })));
     return;
   }
