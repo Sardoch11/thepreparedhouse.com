@@ -97,12 +97,16 @@ function renderMembers() {
   $('#myLoc').textContent = S.me.lat != null ? `Your spot: ${S.me.lat.toFixed(5)}, ${S.me.lng.toFixed(5)} · ${S.me.src || ''} · ${ago(S.me.ts)}${hzWarn(S.me)}` : 'No location yet.';
   const ms = Object.values(S.members);
   $('#members').innerHTML = ms.length ? ms.map(m => {
-    const stale = m.ts && Date.now() - m.ts > CFG.staleMin * 60000;
-    return `<div class="member"><div class="dot" style="background:${colorOf(m.id)}">${esc((m.name || '?').slice(0, 2).toUpperCase())}</div>
-      <div><b>${esc(m.name)}</b> <span class="tag ${m.status}">${STATUS[m.status] || 'OK'}</span>${stale ? ' <span class="tag stale">last seen ' + ago(m.ts) + '</span>' : ''}
-      <div class="meta">${esc(m.note || '')} ${m.src ? '· ' + esc(m.src) : ''} · ${ago(m.ts)}${hzWarn(m)}</div></div>
-      <div class="row"><button class="btn ghost sm" data-zoom="${m.id}" aria-label="Show ${esc(m.name)}">Show</button><button class="btn ghost sm" data-del="${m.id}" aria-label="Remove ${esc(m.name)}">✕</button></div></div>`;
-  }).join('') : '<p class="hint">No one else yet. Join a family in Setup, paste a text check-in, or load the demo family.</p>';
+    const has = m.lat != null, stale = has && m.ts && Date.now() - m.ts > CFG.staleMin * 60000;
+    const tag = has ? `<span class="tag ${m.status}">${STATUS[m.status] || 'OK'}</span>` : '<span class="tag none">Not checked in</span>';
+    const meta = has ? [m.note, m.src, ago(m.ts)].filter(Boolean).map(esc).join(' · ') + hzWarn(m) : esc(m.tel || m.email || 'No phone saved');
+    const act = has ? `<button class="btn ghost sm" data-zoom="${m.id}" aria-label="Show ${esc(m.name)} on the map">Show</button>`
+      : `<button class="btn ghost sm" data-invite="${m.id}" aria-label="Invite ${esc(m.name)}">Invite</button>`;
+    return `<div class="member"><div class="dot${has ? '' : ' none'}" style="background:${colorOf(m.id)}">${esc((m.name || '?').slice(0, 2).toUpperCase())}</div>
+      <div><b>${esc(m.name)}</b> ${tag}${stale ? ' <span class="tag stale">last seen ' + ago(m.ts) + '</span>' : ''}
+      <div class="meta">${meta}</div></div>
+      <div class="row">${act}<button class="btn ghost sm" data-del="${m.id}" aria-label="Remove ${esc(m.name)}">✕</button></div></div>`;
+  }).join('') : '<p class="hint">No one yet. Add people from your contacts, join a family in Setup, or paste a text check-in.</p>';
   renderCheckin(); renderMeetSel(); drawPeople();
 }
 function hzWarn(p) { if (!H || p.lat == null) return ''; const h = E.hazardAt(H, p.lat, p.lng); return h >= 5 ? ' · in a very high liquefaction zone' : h === 4 ? ' · in a high liquefaction zone' : ''; }
@@ -142,7 +146,9 @@ async function syncPull() {
   const base = fbBase(); if (!base) return;
   try {
     const j = await (await fetch(base + '.json')).json(); if (!j) return;
-    for (const [id, m] of Object.entries(j.members || {})) if (id !== S.me.id && m && typeof m.lat === 'number') {
+    for (let [id, m] of Object.entries(j.members || {})) if (id !== S.me.id && m && typeof m.lat === 'number') {
+      const twin = findByName(m.name);
+      if (twin && twin.id !== id && twin.lat == null) { delete S.members[twin.id]; m = { tel: twin.tel, email: twin.email, ...m }; }
       const cur = S.members[id]; if (!cur || (m.ts || 0) >= (cur.ts || 0)) S.members[id] = { ...cur, ...m, id, src: 'live' };
     }
     if (j.meet && j.meet.ts > (S.meet?.ts || 0)) S.meet = j.meet;
@@ -317,6 +323,63 @@ function askName(label, cb) {
   box.querySelector('button').onclick = done; inp.onkeydown = e => { if (e.key === 'Enter') done(); };
 }
 
+/* ---------- address book ---------- */
+const hasPicker = 'contacts' in navigator && 'ContactsManager' in window;
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+const normTel = t => String(t || '').replace(/[^\d+]/g, '').replace(/^1(?=\d{10}$)/, '');
+function findByName(n) { const k = String(n || '').trim().toLowerCase(); return k ? Object.values(S.members).find(m => (m.name || '').trim().toLowerCase() === k) : null; }
+function addContacts(list) {
+  let n = 0;
+  for (const c of list) {
+    const name = String(c.name || '').trim().slice(0, 40), tel = String(c.tel || '').trim().slice(0, 30), email = String(c.email || '').trim().slice(0, 80);
+    if (!name && !tel) continue;
+    const ex = Object.values(S.members).find(m => (tel && m.tel && normTel(m.tel) === normTel(tel)) || (name && (m.name || '').toLowerCase() === name.toLowerCase()));
+    if (ex) { ex.tel = ex.tel || tel; ex.email = ex.email || email; continue; }
+    const id = 'c-' + uid(); S.members[id] = { id, name: name || tel, tel, email, status: 'none', src: 'from contacts' }; n++;
+  }
+  save(); renderMembers();
+  toast(n ? `Added ${n} ${n === 1 ? 'person' : 'people'}. Tap Invite so they can share where they are.` : 'Already on your list.', 4500);
+}
+function parseVcf(text) {
+  const out = [], body = String(text).replace(/\r\n/g, '\n').replace(/\n[ \t]/g, '');
+  const unesc = v => v.replace(/\\n/gi, ' ').replace(/\\([,;\\])/g, '$1').trim();
+  for (const card of body.split(/BEGIN:VCARD/i).slice(1)) {
+    const get = re => { const m = card.match(re); return m ? unesc(m[1]) : ''; };
+    let name = get(/^(?:item\d+\.)?FN[^:\n]*:(.*)$/im);
+    if (!name) { const nn = get(/^N(?:;[^:\n]*)?:(.*)$/im).split(';'); name = [nn[1], nn[0]].filter(Boolean).join(' '); }
+    out.push({ name, tel: get(/^(?:item\d+\.)?TEL[^:\n]*:(.*)$/im), email: get(/^(?:item\d+\.)?EMAIL[^:\n]*:(.*)$/im) });
+  }
+  return out;
+}
+function inviteText() {
+  const url = location.origin + location.pathname;
+  if (S.fb.url && S.fb.code) return `Join our family on Path2Safe so we can find each other after an earthquake. Open ${url}, tap Setup, and enter database ${S.fb.url} and family code ${S.fb.code}.`;
+  return `After a big quake, please send me a Path2Safe check-in. Open ${url}, set your spot, then copy the text check-in and send it to me.`;
+}
+async function invite(m) {
+  const t = inviteText();
+  if (m.tel) { location.href = `sms:${normTel(m.tel)}${isIOS ? '&' : '?'}body=${encodeURIComponent(t)}`; return; }
+  if (m.email) { location.href = `mailto:${encodeURIComponent(m.email)}?subject=${encodeURIComponent('Path2Safe family plan')}&body=${encodeURIComponent(t)}`; return; }
+  try { await navigator.clipboard.writeText(t); toast('No phone saved. Invite copied: paste it into a message.'); } catch (e) { toast(t, 8000); }
+}
+if (!hasPicker) {
+  $('#pickContacts').hidden = true;
+  $('#vcfLabel').classList.remove('ghost');
+  $('#contactsHint').textContent = isIOS
+    ? 'On iPhone: open Contacts, choose a person, tap Share Contact, then Save to Files. Pick that file here. Contacts stay on this phone.'
+    : 'Export contact cards (.vcf) from your address book and pick them here. Contacts stay on this phone.';
+}
+$('#pickContacts').onclick = async () => {
+  try {
+    const list = await navigator.contacts.select(['name', 'tel', 'email'], { multiple: true });
+    addContacts(list.map(c => ({ name: (c.name || [])[0], tel: (c.tel || [])[0], email: (c.email || [])[0] })));
+  } catch (e) { toast('Could not open contacts: ' + e.message); }
+};
+$('#vcfInput').onchange = async e => {
+  const out = []; for (const f of e.target.files) { try { out.push(...parseVcf(await f.text())); } catch (err) { } }
+  e.target.value = ''; out.length ? addContacts(out) : toast('No contacts found in that file.');
+};
+
 /* ---------- events ---------- */
 $$('nav.tabs button').forEach(b => b.onclick = () => {
   $$('nav.tabs button').forEach(x => x.setAttribute('aria-selected', x === b));
@@ -332,7 +395,9 @@ $('#addMember').onclick = () => pick('Tap where they are', (la, ln) => askName('
 $('#demoBtn').onclick = loadDemo;
 $('#members').onclick = e => {
   const z = e.target.closest('[data-zoom]'), d = e.target.closest('[data-del]');
-  if (z) { const m = S.members[z.dataset.zoom]; map.setView([m.lat, m.lng], 15); if (innerWidth <= 760) $('#sheet').classList.add('min'); }
+  const iv = e.target.closest('[data-invite]');
+  if (iv) invite(S.members[iv.dataset.invite]);
+  if (z) { const m = S.members[z.dataset.zoom]; if (m.lat == null) return; map.setView([m.lat, m.lng], 15); if (innerWidth <= 760) $('#sheet').classList.add('min'); }
   if (d) { delete S.members[d.dataset.del]; save(); renderMembers(); }
 };
 $('#meetSel').onchange = e => { const v = e.target.value; if (!v || v === 'cur') return; const o = meetOptions().find(x => x.k === v); if (o) setMeet(o); };
@@ -346,7 +411,10 @@ $('#ciAdd').onclick = () => {
   if (!r.people.length) { $('#ciMsg').textContent = 'No Path2Safe check-in found in that text.'; return; }
   r.people = r.people.filter(p => !(S.me.lat != null && E.hav([p.lat, p.lng], [S.me.lat, S.me.lng]) < 5 && p.name === (S.me.name || 'Me')));
   if (!r.people.length) { $('#ciMsg').textContent = 'That check-in is your own.'; return; }
-  r.people.forEach(p => { const id = 'sms-' + p.name.toLowerCase().replace(/\W+/g, '-'); S.members[id] = { id, ...p, ts: Date.now(), src: 'text check-in' }; });
+  r.people.forEach(p => {
+    const ex = findByName(p.name), id = ex ? ex.id : 'sms-' + p.name.toLowerCase().replace(/\W+/g, '-');
+    S.members[id] = { ...(ex || {}), id, ...p, ts: Date.now(), src: 'text check-in' };
+  });
   if (r.meet && !S.meet) S.meet = r.meet;
   save(); renderMembers(); $('#ciPaste').value = ''; $('#ciMsg').textContent = 'Added ' + r.people.map(p => p.name).join(', ') + '.';
 };
