@@ -321,8 +321,23 @@ async function streetRoute(pts, mode, alts) {
     });
   } catch (e) { return null; } finally { clearTimeout(to); }
 }
-function evaluate(line, en) {
+// Street names catch bridges the approximate river line can miss (e.g. Ross Island, where the river splits).
+const BKEY = { i205: 'glenn', ocarch: 'oregon city', stjohns: 'st johns', i5: 'interstate bridge', steel: 'steel bridge', broadway: 'broadway bridge', fremont: 'fremont bridge' };
+function bridgesByName(steps) {
+  const hit = new Set();
+  for (const s of steps || []) {
+    const nm = String(s.name || '').toLowerCase().replace(/\./g, ''); if (!/bridge|crossing/.test(nm)) continue;
+    for (const b of DATA.bridges) {
+      const key = BKEY[b.id] || b.name.toLowerCase().replace(/\./g, '').replace(/ \(.*$/, '').replace(/ (bridge|crossing)$/, '');
+      if (nm.includes(key) && s.line.some(pt => E.hav(pt, [b.lat, b.lng]) < 1500)) hit.add(b);
+    }
+  }
+  return [...hit];
+}
+function evaluate(line, en, steps) {
   const ex = E.exposure(H, line), cx = E.crossings(line, en);
+  const named = bridgesByName(steps).map(b => ({ bridge: b, open: E.bridgeOpen(b, en.mode, en.overrides) }));
+  for (const n of named) if (!cx.some(c => c.bridge && c.bridge.id === n.bridge.id)) cx.push(n);
   const bad = cx.filter(c => c.bridge && !c.open), used = cx.filter(c => c.bridge && c.open).map(c => c.bridge.name);
   return { ex, bad, used: [...new Set(used)], score: E.score(ex) + (bad.length ? 1e7 : 0) };
 }
@@ -442,7 +457,7 @@ async function routeLeg(target, travelers, en, label) {
     let opts = [];
     if (online) {
       const res = await Promise.all([streetRoute([[p.lat, p.lng], tgt], S.mode, true), streetRoute(E.viaPoints(corr[0], en), S.mode), corr[1] ? streetRoute(E.viaPoints(corr[1], en), S.mode) : null]);
-      res.forEach((rs, i) => (rs || []).forEach(c => opts.push({ kind: ['street-direct', 'street-safe', 'street-cautious'][i], line: c.line, dist: c.dist, dur: c.dur, steps: c.steps, ...evaluate(c.line, en) })));
+      res.forEach((rs, i) => (rs || []).forEach(c => opts.push({ kind: ['street-direct', 'street-safe', 'street-cautious'][i], line: c.line, dist: c.dist, dur: c.dur, steps: c.steps, ...evaluate(c.line, en, c.steps) })));
       opts = opts.filter(o => !o.bad.length);
     }
     if (!opts.length) corr.forEach((ln, i) => ln && opts.push({ kind: i ? 'corridor-cautious' : 'corridor', line: ln, ...evaluate(ln, en) }));
