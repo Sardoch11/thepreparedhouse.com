@@ -79,3 +79,8 @@ Bridge defaults: Sellwood and Tilikum are treated as usable (both were designed 
 ## Ideas for the next version
 
 Landslide and CEI Hub layers, offline map package for the family's area, Bluetooth/mesh sharing between nearby phones, school district and employer reunification sites pulled from each family's Prepared House plan, and accessibility routing for family members who can't walk long distances.
+
+## Three ways to plan (Reunite screen)
+- **Meet up:** everyone (or whoever you pick under "Who's going") routes to the meeting point.
+- **Go to someone:** routes to a family member's last shared location. People marked Injured or Need help are listed first. Everyone else goes by default, except anyone marked Injured. The app names who's closest, and if the person has a phone number saved, it offers a "Text them you're coming" message with your time estimate and check-in. The Family screen has a "Go to" button on each person who has a location.
+- **Pick up:** routes you to a school, child care centre or release site, then on to home or the meeting point with the children you picked. Saved places with school-like names get a "Pick up" button in Setup. The screen reminds parents that many schools release students at a separate site, only to listed emergency contacts, with photo ID.

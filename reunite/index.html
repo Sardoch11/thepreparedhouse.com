@@ -78,6 +78,11 @@ textarea{min-height:90px;resize:vertical}
 .meta{font-size:13px;color:var(--muted)}
 .tag{display:inline-block;font-size:12px;padding:1px 7px;border-radius:99px;background:#e6f1eb;color:var(--accent)}
 .tag.help{background:#fdf3d1;color:#6b5200}.tag.injured{background:#f9e3db;color:var(--alert)}.tag.stale,.tag.none{background:var(--soft);color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:99px;padding:6px 12px;min-height:36px;font-size:14px;cursor:pointer}
+.chip[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.chip[disabled]{opacity:.45;cursor:default}
+#goalSeg button{font-size:13px}
 .route{border-left:3px solid var(--ink);padding:6px 0 6px 12px;margin:14px 0}
 .route .row b{font-size:18px}
 .warn{color:var(--alert);font-size:14px}
@@ -156,15 +161,35 @@ details summary{cursor:pointer;min-height:32px}
   </section>
 
   <section class="pane" id="t-reunite">
-    <label class="f" for="meetSel" style="margin-top:0">Meeting point</label>
-    <select id="meetSel"></select>
-    <div class="row" style="margin-top:8px">
-      <button class="btn ghost sm" id="pickMeet">Find an address</button>
-      <button class="btn ghost sm" id="fairBtn">Suggest the fairest</button>
+    <div class="seg" id="goalSeg" role="group" aria-label="What do you need to do?"><button data-g="meet">Meet up</button><button data-g="person">Go to someone</button><button data-g="pickup">Pick up</button></div>
+    <div id="gMeet">
+      <label class="f" for="meetSel">Meeting point</label>
+      <select id="meetSel"></select>
+      <div class="row" style="margin-top:8px">
+        <button class="btn ghost sm" id="pickMeet">Find an address</button>
+        <button class="btn ghost sm" id="fairBtn">Suggest the fairest</button>
+      </div>
     </div>
+    <div id="gPerson" hidden>
+      <label class="f" for="personSel">Go to</label>
+      <select id="personSel"></select>
+      <p class="hint">People marked Injured or Need help come first. Routes go to their last shared location.</p>
+    </div>
+    <div id="gPickup" hidden>
+      <label class="f" for="pickSel">Pick up at</label>
+      <select id="pickSel"></select>
+      <div class="row" style="margin-top:8px"><button class="btn ghost sm" id="pickSchool">Find a school or site</button></div>
+      <label class="f">Picking up</label>
+      <div class="chips" id="kidChips"></div>
+      <label class="f" for="thenSel">Then go to</label>
+      <select id="thenSel"></select>
+      <p class="hint">Many schools release students at a separate reunification site, and only to adults on the emergency contact list. Bring photo ID and watch the school's alerts for the release site.</p>
+    </div>
+    <label class="f">Who's going</label>
+    <div class="chips" id="whoChips"></div>
     <label class="f">Travel by</label>
     <div class="seg" id="modeSeg"><button data-m="foot" aria-pressed="true">Walk</button><button data-m="bike">Bike</button><button data-m="car">Drive</button></div>
-    <div class="row" style="margin-top:12px"><button class="btn grow" id="planBtn">Plan routes for everyone</button></div>
+    <div class="row" style="margin-top:12px"><button class="btn grow" id="planBtn">Plan routes</button></div>
     <div id="routes"></div>
   </section>
 
