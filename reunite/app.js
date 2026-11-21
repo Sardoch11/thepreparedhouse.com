@@ -521,7 +521,7 @@ async function geocode(q, near) {
     if (dup) { dup.type = dup.type || h.type; dup.street = dup.street || h.street; dup.city = dup.city || h.city; continue; }
     out.push(h);
   }
-  out.sort((x, y) => (x.far - y.far) || (Math.round(y.match * 4) - Math.round(x.match * 4)) || (x.d - y.d));
+  out.sort((x, y) => (x.far - y.far) || (Math.round(y.match * 4) - Math.round(x.match * 4)) || ((x.d - (x.type && x.street ? 1500 : 0)) - (y.d - (y.type && y.street ? 1500 : 0))));
   return out.slice(0, 8).map(h => ({ ...h, short: h.name || h.street || h.city, label: [h.name, h.street, h.city].filter(Boolean).join(', ') }));
 }
 // opts: {title, nameLabel (omit to skip the name), mapPrompt, done(name, lat, lng, label)}
