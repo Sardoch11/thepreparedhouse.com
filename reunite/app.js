@@ -2,7 +2,7 @@
 {
 const E = window.P2S_ENGINE, DATA = window.P2S_DATA;
 const CFG = {
-  hzBounds: '-122.95,45.38,-122.35,45.68',         // Portland metro download extent (w,s,e,n)
+  hzBounds: '-123.25,45.15,-122.10,45.80',         // Multnomah, Washington and Clackamas counties (urban areas) plus Vancouver (w,s,e,n)
   osrm: { foot: 'https://routing.openstreetmap.de/routed-foot/route/v1/driving/', bike: 'https://routing.openstreetmap.de/routed-bike/route/v1/driving/', car: 'https://routing.openstreetmap.de/routed-car/route/v1/driving/' },
   speed: { foot: 4.5, bike: 14, car: 30 },          // km/h fallback when no street route
   pushEveryMs: 20000, pullEveryMs: 15000, staleMin: 30
@@ -27,6 +27,9 @@ const LAYERS = [
   { id: 'sslr', type: 'prefer', name: 'State seismic lifeline routes', src: 'ODOT',
     url: 'https://services2.arcgis.com/McQ0OlIABe29rJJy/ArcGIS/rest/services/SSLRs_ETRs/FeatureServer/1', where: '1=1', fields: 'Highway,Tier,Descriptio', page: 2000,
     swatch: ['#0B3B25'], line: { color: '#0B3B25', weight: 4, opacity: 0.7 }, label: p => `${p.Highway} (tier ${p.Tier})` },
+  { id: 'fire', type: 'points', name: 'Fire stations', src: 'Oregon State Fire Marshal',
+    url: 'https://services.arcgis.com/uUvqNMGPm7axC2dD/arcgis/rest/services/OR_Fire_Stations/FeatureServer/0', where: '1=1', fields: 'Agency,Station,Physical_Address', page: 2000,
+    swatch: ['#B43D1A'] },
   { id: 'wui', type: 'image', name: 'Wildland-urban interface (wildfire)', src: 'Oregon Department of Forestry',
     url: 'https://gis.odf.oregon.gov/ags1/rest/services/WebMercator/Fire/MapServer', layer: 6, swatch: ['#C2671B'], off: true }
 ];
@@ -77,10 +80,13 @@ function geoLines(fc) {
     for (const pts of parts) out.push({ props: f.properties || {}, ll: pts.map(([x, y]) => [y, x]) }); }
   return out;
 }
+const fireIcon = L.divIcon({ className: '', html: '<div style="width:12px;height:12px;border-radius:3px;background:#B43D1A;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.25)"></div>', iconSize: [12, 12] });
 function drawLayer(l) {
   const d = LD[l.id]; d.group.clearLayers();
   if (l.type === 'avoid' && d.polys) for (const p of d.polys)
     L.polygon(p.rings.map(r => r.map(([x, y]) => [y, x])), { renderer: hzRenderer, stroke: false, interactive: false, ...l.style(p) }).addTo(d.group);
+  if (l.type === 'points' && d.points) for (const pt of d.points)
+    L.marker(pt.ll, { icon: fireIcon, title: pt.p.Station || 'Fire station' }).bindPopup(`<b>${esc(pt.p.Station || 'Fire station')}</b><br>${esc(pt.p.Agency || '')}<br><small>${esc(pt.p.Physical_Address || '')}</small>`).addTo(d.group);
   if (l.type === 'prefer' && d.lines) for (const ln of d.lines)
     L.polyline(ln.ll, { renderer: hzRenderer, ...l.line, interactive: true }).bindTooltip(esc(l.label(ln.props) || l.name)).addTo(d.group);
   if (S.layers[l.id].show) map.addLayer(d.group); else map.removeLayer(d.group);
@@ -246,7 +252,7 @@ function renderMeetSel() {
 function setMeet(m) { S.meet = { name: m.name, lat: m.lat, lng: m.lng, ts: Date.now() }; save(); renderMembers(); shareMeet(); }
 
 /* ---------- hazard and route layers: download once, keep for offline ---------- */
-const layerKey = l => l.id === 'liq' ? 'liq' : 'L:' + l.id;
+const layerKey = l => 'L2:' + l.id;   // v2 = three-county extent
 async function fetchLayer(l) {
   let feats = [], off = 0, more = true;
   while (more && off < 40000) {
@@ -260,7 +266,9 @@ async function fetchLayer(l) {
 }
 function useLayer(l, fc, meta) {
   const d = LD[l.id]; d.meta = meta; d.err = null;
-  if (l.type === 'avoid') d.polys = l.build(fc); else d.lines = geoLines(fc);
+  if (l.type === 'avoid') d.polys = l.build(fc);
+  else if (l.type === 'points') d.points = (fc.features || []).filter(f => f.geometry).map(f => ({ p: f.properties || {}, ll: [f.geometry.coordinates[1], f.geometry.coordinates[0]] }));
+  else d.lines = geoLines(fc);
   drawLayer(l);
 }
 async function loadHazards(force) {
@@ -288,6 +296,7 @@ function renderLayerList() {
     const status = l.type === 'image' ? 'Live from the map server; not saved offline'
       : d.err ? 'Not available: ' + esc(d.err) : d.meta ? `${d.meta.n.toLocaleString()} features · saved ${new Date(d.meta.when).toLocaleDateString()}` : 'Waiting to download…';
     const use = l.type === 'avoid' ? 'Avoid in routes' : l.type === 'prefer' ? 'Prefer in routes' : '';
+    if (l.type === 'points') { /* shown only */ }
     const sw = l.swatch.map(c => l.type === 'prefer' ? `<span class="sw" style="background:${c};height:4px"></span>` : `<span class="sw" style="background:${c};opacity:.6"></span>`).join('');
     return `<div class="member" style="grid-template-columns:22px 1fr"><div style="display:grid;gap:3px">${sw}</div><div><b>${esc(l.name)}</b><div class="meta">${esc(l.src)} · ${status}</div>
       <div class="row" style="gap:16px;margin-top:4px"><label class="meta"><input type="checkbox" data-show="${l.id}"${st.show ? ' checked' : ''}> Show</label>${use ? `<label class="meta"><input type="checkbox" data-use="${l.id}"${st.use ? ' checked' : ''}> ${use}</label>` : ''}</div></div></div>`;

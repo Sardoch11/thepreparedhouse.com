@@ -18,13 +18,17 @@ window.P2S_DATA = {
     { id: "fremont", name: "Fremont Bridge (I-405)", lat: 45.5379, lng: -122.6834, quake: "closed", modes: { foot: 0, bike: 0, car: 1 } },
     { id: "stjohns", name: "St. Johns Bridge", lat: 45.5851, lng: -122.7647, quake: "closed", modes: { foot: 1, bike: 1, car: 1 } },
     { id: "i5", name: "Interstate Bridge (I-5)", lat: 45.6186, lng: -122.6748, quake: "closed", modes: { foot: 1, bike: 1, car: 1 } },
-    { id: "i205", name: "Glenn Jackson Bridge (I-205)", lat: 45.5926, lng: -122.5508, quake: "closed", modes: { foot: 1, bike: 1, car: 1 } }
+    { id: "i205", name: "Glenn Jackson Bridge (I-205)", lat: 45.5926, lng: -122.5508, quake: "closed", modes: { foot: 1, bike: 1, car: 1 } },
+    /* Clackamas County crossings of the Willamette (ODOT, 2024-2026) */
+    { id: "abernethy", name: "Abernethy Bridge (I-205, Oregon City)", lat: 45.3645, lng: -122.6135, quake: "resilient", modes: { foot: 0, bike: 0, car: 1 }, note: "ODOT seismic upgrade to make it the first earthquake-ready interstate bridge over the Willamette in the Portland area; final work scheduled for 2026. Freeway: no walking." },
+    { id: "ocarch", name: "Oregon City Arch Bridge (OR 43)", lat: 45.35917, lng: -122.60972, quake: "closed", modes: { foot: 1, bike: 1, car: 1 }, note: "ODOT (2024): not expected to survive a major earthquake." },
+    { id: "boone", name: "Boone Bridge (I-5, Wilsonville)", lat: 45.2993, lng: -122.7700, quake: "closed", modes: { foot: 0, bike: 0, car: 1 }, note: "ODOT (2024): not earthquake-ready; replacement planned." }
   ],
 
-  /* Approximate river centerlines [lat,lng]. Used only so offline routing can't "swim" across;
+  /* Approximate river centerlines [lat,lng] (Willamette from Wilsonville to the Columbia; the Clackamas and Tualatin rivers aren't modelled). Used only so offline routing can't "swim" across;
      a route may cross only where an open bridge is. */
   rivers: [
-    { name: "Willamette", pts: [[45.380,-122.640],[45.410,-122.645],[45.440,-122.655],[45.4644,-122.6656],[45.480,-122.6660],[45.4955,-122.6655],[45.5056,-122.6650],[45.5087,-122.6688],[45.5131,-122.6716],[45.5175,-122.6693],[45.5230,-122.6670],[45.5275,-122.6695],[45.5317,-122.6760],[45.5379,-122.6834],[45.5500,-122.7050],[45.5650,-122.7300],[45.5851,-122.7647],[45.6050,-122.7800],[45.6300,-122.7700],[45.6480,-122.7630]] },
+    { name: "Willamette", pts: [[45.270,-122.950],[45.280,-122.850],[45.293,-122.800],[45.2993,-122.7700],[45.302,-122.745],[45.308,-122.718],[45.318,-122.700],[45.337,-122.668],[45.344,-122.640],[45.352,-122.617],[45.35917,-122.6100],[45.3645,-122.6135],[45.374,-122.618],[45.395,-122.640],[45.412,-122.652],[45.440,-122.655],[45.4644,-122.6656],[45.480,-122.6660],[45.4955,-122.6655],[45.5056,-122.6650],[45.5087,-122.6688],[45.5131,-122.6716],[45.5175,-122.6693],[45.5230,-122.6670],[45.5275,-122.6695],[45.5317,-122.6760],[45.5379,-122.6834],[45.5500,-122.7050],[45.5650,-122.7300],[45.5851,-122.7647],[45.6050,-122.7800],[45.6300,-122.7700],[45.6480,-122.7630]] },
     { name: "Columbia", pts: [[45.700,-122.780],[45.6480,-122.7630],[45.6300,-122.7200],[45.6186,-122.6748],[45.6050,-122.6200],[45.5926,-122.5508],[45.5800,-122.4700],[45.5650,-122.3800]] }
   ],
 
