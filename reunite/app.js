@@ -426,7 +426,7 @@ function simplify(raw) {
   for (let i = st.length - 2; i > 0; i--) if (st[i].dist < 60) { const prev = st[i - 1]; prev.dist += st[i].dist; prev.line.push(...st[i].line.slice(1)); st.splice(i, 1); }
   const out = [];
   for (const s of st) {
-    const last = out[out.length - 1], same = last && s.type !== 'arrive' && last.type !== 'depart' && roadName(s) === roadName(last);
+    const last = out[out.length - 1], same = last && s.type !== 'arrive' && roadName(s) === roadName(last);
     if (same && (roadName(s) || compass(s.brg) === compass(last.brg))) { last.dist += s.dist; last.line.push(...s.line.slice(1)); continue; }
     out.push(s);
   }
@@ -456,8 +456,12 @@ async function routeLeg(target, travelers, en, label) {
     if (!corr[0]) { out.push({ p, col, label, target, fail: true }); continue; }
     let opts = [];
     if (online) {
-      const res = await Promise.all([streetRoute([[p.lat, p.lng], tgt], S.mode, true), streetRoute(E.viaPoints(corr[0], en), S.mode), corr[1] ? streetRoute(E.viaPoints(corr[1], en), S.mode) : null]);
-      res.forEach((rs, i) => (rs || []).forEach(c => opts.push({ kind: ['street-direct', 'street-safe', 'street-cautious'][i], line: c.line, dist: c.dist, dur: c.dur, steps: c.steps, ...evaluate(c.line, en, c.steps) })));
+      // if the trip crosses a river, also try each other open bridge within a sensible detour
+      const crossesRiver = E.crossings(corr[0], en).some(c => c.bridge), here = [p.lat, p.lng], straight = E.hav(here, tgt);
+      const viaBridges = crossesRiver ? DATA.bridges.filter(b => E.bridgeOpen(b, en.mode, en.overrides)).map(b => ({ b, d: E.hav(here, [b.lat, b.lng]) + E.hav([b.lat, b.lng], tgt) })).filter(x => x.d < straight * 1.8 + 2000).sort((a, b) => a.d - b.d).slice(0, 3) : [];
+      const jobs = [streetRoute([here, tgt], S.mode, true), streetRoute(E.viaPoints(corr[0], en), S.mode), corr[1] ? streetRoute(E.viaPoints(corr[1], en), S.mode) : null, ...viaBridges.map(x => streetRoute([here, [x.b.lat, x.b.lng], tgt], S.mode))];
+      const res = await Promise.all(jobs);
+      res.forEach((rs, i) => (rs || []).forEach(c => opts.push({ kind: i < 3 ? ['street-direct', 'street-safe', 'street-cautious'][i] : 'street-bridge', line: c.line, dist: c.dist, dur: c.dur, steps: c.steps, ...evaluate(c.line, en, c.steps) })));
       opts = opts.filter(o => !o.bad.length);
     }
     if (!opts.length) corr.forEach((ln, i) => ln && opts.push({ kind: i ? 'corridor-cautious' : 'corridor', line: ln, ...evaluate(ln, en) }));
