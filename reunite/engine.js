@@ -123,7 +123,8 @@
         const cc = c + dc, rr = r + dr; if (cc >= 0 && rr >= 0 && cc < cols && rr < rows) water[rr * cols + cc] = 0;
       }
     }
-    for (let i = 0; i < N; i++) cost[i] = water[i] ? Infinity : hz[i] * (pref[i] ? PREFER : 1);
+    const pw = env.hzPow || 1;   // >1 = extra-cautious variant: hazard cells cost disproportionately more
+    for (let i = 0; i < N; i++) cost[i] = water[i] ? Infinity : (pw === 1 ? hz[i] : Math.pow(hz[i], pw)) * (pref[i] ? PREFER : 1);
     return { b, cell, cols, rows, N, hz, water, cost, toLL, toCR };
   }
 

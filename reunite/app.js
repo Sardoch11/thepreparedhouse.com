@@ -304,13 +304,21 @@ function renderLayerList() {
 }
 
 /* ---------- routing ---------- */
-async function streetRoute(pts, mode) {
+async function streetRoute(pts, mode, alts) {
   const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 12000);
   try {
-    const u = CFG.osrm[mode] + pts.map(p => p[1].toFixed(5) + ',' + p[0].toFixed(5)).join(';') + '?overview=full&geometries=geojson&continue_straight=false';
+    const u = CFG.osrm[mode] + pts.map(p => p[1].toFixed(5) + ',' + p[0].toFixed(5)).join(';') + '?overview=full&geometries=geojson&steps=true&continue_straight=false' + (alts && pts.length === 2 ? '&alternatives=2' : '');
     const j = await (await fetch(u, { signal: ctl.signal })).json();
     if (j.code !== 'Ok' || !j.routes.length) return null;
-    const r = j.routes[0]; return { line: r.geometry.coordinates.map(([x, y]) => [y, x]), dur: r.duration, dist: r.distance };
+    return j.routes.map(r => {
+      const steps = [], legs = r.legs || [];
+      legs.forEach((lg, li) => lg.steps.forEach(st => {
+        const t = st.maneuver.type;
+        if ((t === 'arrive' && li < legs.length - 1) || (t === 'depart' && li > 0)) { if (steps.length && st.distance) steps[steps.length - 1].dist += st.distance; return; }   // hide via-point stops
+        steps.push({ type: t, mod: st.maneuver.modifier || '', brg: st.maneuver.bearing_after, name: st.name || '', ref: st.ref || '', dest: st.destinations || '', exit: st.maneuver.exit, dist: st.distance, line: (st.geometry && st.geometry.coordinates || []).map(([x, y]) => [y, x]) });
+      }));
+      return { line: r.geometry.coordinates.map(([x, y]) => [y, x]), dur: r.duration, dist: r.distance, steps };
+    });
   } catch (e) { return null; } finally { clearTimeout(to); }
 }
 function evaluate(line, en) {
@@ -362,50 +370,141 @@ function renderPlan() {
   $('#planBtn').textContent = g === 'person' ? 'Plan routes to them' : g === 'pickup' ? 'Plan the pickup' : 'Plan routes';
 }
 
-/* one routing pass: every traveler to one target */
+/* ---------- directions: compass headings, turn by turn ---------- */
+const DIR8 = ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest'];
+const compass = b => DIR8[Math.round(((b % 360) + 360) % 360 / 45) % 8];
+const bearing = (a, b) => { const r = Math.PI / 180, y = Math.sin((b[1] - a[1]) * r) * Math.cos(b[0] * r), x = Math.cos(a[0] * r) * Math.sin(b[0] * r) - Math.sin(a[0] * r) * Math.cos(b[0] * r) * Math.cos((b[1] - a[1]) * r); return (Math.atan2(y, x) / r + 360) % 360; };
+const TURN = { 'straight': 'Continue', 'slight left': 'Bear left', 'slight right': 'Bear right', 'left': 'Turn left', 'right': 'Turn right', 'sharp left': 'Turn sharp left', 'sharp right': 'Turn sharp right', 'uturn': 'Make a U-turn' };
+function roadName(s) { const n = tidy(s.name), r = s.ref ? s.ref.split(';')[0] : ''; return n && r && !n.includes(r) ? `${n} (${r})` : n || r; }
+function stepText(s, destName) {
+  const dir = compass(s.brg), road = roadName(s), on = road ? ' on ' + road : '', onto = road ? ' onto ' + road : '', to = s.dest ? ' toward ' + s.dest.split(',')[0] : '', side = /left/.test(s.mod) ? 'left' : /right/.test(s.mod) ? 'right' : '';
+  switch (s.type) {
+    case 'depart': return `Head ${dir}${on}`;
+    case 'arrive': return `Arrive at ${destName}`;
+    case 'new name': case 'continue': return s.mod && s.mod !== 'straight' && TURN[s.mod] ? `${TURN[s.mod]} to stay heading ${dir}${on}` : `Continue ${dir}${on}`;
+    case 'on ramp': return `Take the ramp heading ${dir}${to || onto}`;
+    case 'off ramp': return `Take the exit heading ${dir}${to || onto}`;
+    case 'merge': return `Merge heading ${dir}${onto}`;
+    case 'fork': return `Keep ${side || 'straight'} at the fork, heading ${dir}${onto}`;
+    case 'end of road': return `At the end of the road, turn ${side || 'onto the cross street'} heading ${dir}${onto}`;
+    case 'roundabout': case 'rotary': case 'exit roundabout': case 'roundabout turn': return `At the roundabout, take ${s.exit ? 'exit ' + s.exit : 'the exit'} heading ${dir}${onto}`;
+    default: return `${TURN[s.mod] || 'Continue'}${road ? ' onto ' + road + ', heading ' + dir : ' and head ' + dir}`;
+  }
+}
+// Offline or corridor-only: compass legs from the line itself
+function corridorSteps(line, destName) {
+  const segs = [];
+  for (let k = 0; k < line.length - 1; k++) {
+    const d = E.hav(line[k], line[k + 1]); if (d < 1) continue;
+    const b = bearing(line[k], line[k + 1]), c = compass(b), last = segs[segs.length - 1];
+    if (last && (last.c === c || d < 120)) { last.dist += d; last.line.push(line[k + 1]); } else segs.push({ c, brg: b, dist: d, line: [line[k], line[k + 1]] });
+  }
+  for (let i = segs.length - 1; i > 0; i--) if (segs[i].dist < 150) { segs[i - 1].dist += segs[i].dist; segs[i - 1].line.push(...segs[i].line.slice(1)); segs.splice(i, 1); }
+  return segs.map((g, i) => {
+    let t; if (!i) t = `Head ${g.c}`; else { const dlt = ((g.brg - segs[i - 1].brg + 540) % 360) - 180; t = `${Math.abs(dlt) < 60 ? 'Bear' : 'Turn'} ${dlt > 0 ? 'right' : 'left'} and head ${g.c}`; }
+    return { text: t, dist: g.dist, line: g.line };
+  }).concat([{ text: 'Arrive at ' + destName, dist: 0, line: [] }]);
+}
+function annotate(steps, en) {
+  for (const s of steps) {
+    s.warn = []; if (s.line.length < 2) continue;
+    const ex = E.exposure(H, s.line);
+    for (const [k, m] of Object.entries(ex.by).sort((a, b) => b[1] - a[1])) if (m >= 60) s.warn.push(`${fmtKm(m)} through ${KIND[k] || k}`);
+    for (const c of E.crossings(s.line, en)) if (c.bridge && c.open) s.warn.push(`crosses ${c.bridge.name}`);
+  }
+  return steps;
+}
+
+/* ---------- route options for one traveler ---------- */
+function similar(a, b) { return Math.abs(a.dist - b.dist) / Math.max(a.dist, 1) < .03 && Math.abs(a.ex.total - b.ex.total) < 80; }
 async function routeLeg(target, travelers, en, label) {
   const tgt = [target.lat, target.lng], online = navigator.onLine;
   const bounds = E.padBounds([tgt, ...travelers.map(p => [p.lat, p.lng])], 2500);
-  const G = E.buildGrid(bounds, en, 320), D = E.dijkstra(G, E.nearestDry(G, tgt[0], tgt[1])), out = [];
+  const G = E.buildGrid(bounds, en, 320), D = E.dijkstra(G, E.nearestDry(G, tgt[0], tgt[1]));
+  const G2 = E.buildGrid(bounds, { ...en, hzPow: 1.7 }, 320), D2 = E.dijkstra(G2, E.nearestDry(G2, tgt[0], tgt[1]));
+  const out = [];
   for (const p of travelers) {
     const col = p === S.me ? '#1E6B45' : p.legCol || colorOf(p.id);
-    const path = E.trace(G, D, E.nearestDry(G, p.lat, p.lng));
-    if (!path) { out.push({ p, col, label, target, fail: true }); continue; }
-    const corridor = [[p.lat, p.lng], ...E.toLatLngs(G, E.smooth(G, path)).slice(1, -1), tgt];
-    let best = { kind: 'corridor', line: corridor, ...evaluate(corridor, en) };
-    best.dist = best.ex.len; best.dur = best.dist / (CFG.speed[S.mode] / 3.6);
+    const corr = [[G, D], [G2, D2]].map(([g, d]) => { const path = E.trace(g, d, E.nearestDry(g, p.lat, p.lng)); return path && [[p.lat, p.lng], ...E.toLatLngs(g, E.smooth(g, path)).slice(1, -1), tgt]; });
+    if (!corr[0]) { out.push({ p, col, label, target, fail: true }); continue; }
+    let opts = [];
     if (online) {
-      const cands = await Promise.all([streetRoute([[p.lat, p.lng], tgt], S.mode), streetRoute(E.viaPoints(corridor, en), S.mode)]);
-      for (const [i, c] of cands.entries()) if (c) {
-        const ev = { kind: i ? 'street-safe' : 'street-direct', line: c.line, dist: c.dist, dur: c.dur, ...evaluate(c.line, en) };
-        if (!ev.bad.length && (best.kind === 'corridor' || ev.score < best.score)) best = ev;
-      }
+      const res = await Promise.all([streetRoute([[p.lat, p.lng], tgt], S.mode, true), streetRoute(E.viaPoints(corr[0], en), S.mode), corr[1] ? streetRoute(E.viaPoints(corr[1], en), S.mode) : null]);
+      res.forEach((rs, i) => (rs || []).forEach(c => opts.push({ kind: ['street-direct', 'street-safe', 'street-cautious'][i], line: c.line, dist: c.dist, dur: c.dur, steps: c.steps, ...evaluate(c.line, en) })));
+      opts = opts.filter(o => !o.bad.length);
     }
-    const cEx = E.exposure(H, corridor), extra = best.ex.total - cEx.total;
-    out.push({ p, col, label, target, best, corridor, extra: best.kind !== 'corridor' && extra > 300 ? extra : 0 });
-    if (best.kind !== 'corridor') L.polyline(corridor, { color: col, weight: 3, opacity: .45, dashArray: '4 8' }).bindTooltip('Safe corridor').addTo(lyRoutes);
-    L.polyline(best.line, { color: '#fff', weight: 8, opacity: .9 }).addTo(lyRoutes);
-    L.polyline(best.line, { color: col, weight: 5, opacity: .95, dashArray: best.kind === 'corridor' ? '8 8' : null }).bindTooltip(label || nameOf(p)).addTo(lyRoutes);
+    if (!opts.length) corr.forEach((ln, i) => ln && opts.push({ kind: i ? 'corridor-cautious' : 'corridor', line: ln, ...evaluate(ln, en) }));
+    opts.forEach(o => { if (o.kind.startsWith('corridor')) { o.dist = o.ex.len; o.dur = o.dist / (CFG.speed[S.mode] / 3.6); o.steps = corridorSteps(o.line, target.name); } else o.steps = o.steps.map(s => ({ text: stepText(s, target.name), dist: s.dist, line: s.line })); annotate(o.steps, en); });
+    opts.sort((a, b) => a.score - b.score);
+    const keep = []; for (const o of opts) if (!keep.some(k => similar(k, o))) keep.push(o);
+    opts = keep.slice(0, 3);
+    const fast = opts.reduce((a, b) => b.dur < a.dur ? b : a), calm = opts.reduce((a, b) => b.ex.total < a.ex.total ? b : a);
+    opts.forEach((o, i) => { o.tags = []; if (!i) o.tags.push('Recommended'); if (o === fast && opts.length > 1) o.tags.push('Fastest'); if (o === calm && opts.length > 1) o.tags.push('Fewest hazards'); if (!o.tags.length) o.tags.push('Alternative'); });
+    out.push({ p, col, label, target, opts, sel: 0 });
   }
   return out;
 }
+
+/* ---------- safety notices ---------- */
+function generalSafety() {
+  const m = S.mode, items = [
+    'Expect aftershocks. If shaking starts: Drop, Cover and Hold On.' + (m === 'car' ? ' In a car, pull over in a clear spot away from buildings, trees, overpasses and power lines.' : ''),
+    "Don't enter damaged buildings. Stay well clear of downed power lines and anything touching them.",
+    'Never walk or drive into floodwater: 6 inches of moving water can knock you off your feet, and 12 inches can carry away a car.',
+    m === 'car' ? "Bridges and overpasses can be damaged even when they look fine. Stop if you see cracks, gaps, sagging or a drop at the joints, and expect closures and detours." : 'Wear sturdy, thick-soled shoes and gloves, and carry water, a flashlight and a whistle.',
+    'Text rather than call; save calls for emergencies. Send a check-in when you leave and when you arrive.'];
+  return `<details class="safety"><summary><b>Safety before you go</b></summary><ul>${items.map(t => `<li>${t}</li>`).join('')}</ul><p class="src">Sources: National Weather Service (Turn Around Don't Drown), Ready.gov earthquake guidance.</p></details>`;
+}
+function routeSafety(o) {
+  const n = [], by = o.ex.by;
+  if ((by.liq5 || 0) + (by.liq4 || 0) >= 100) n.push(`Crosses ${fmtKm((by.liq5 || 0) + (by.liq4 || 0))} of liquefaction-prone ground: expect cracked or buckled pavement, sinkholes, broken water mains and standing water. Go slowly and test the ground.`);
+  if ((by.slide || 0) >= 50) n.push(`Passes ${fmtKm(by.slide)} of mapped landslide ground: watch the slope above and below you, especially after rain. Turn back if you see fresh cracks, tilted trees or moving debris.`);
+  if ((by.flood || 0) >= 50) n.push(`Runs ${fmtKm(by.flood)} through a flood zone. If water covers the road or path, turn around.`);
+  for (const nm of o.used) { const b = DATA.bridges.find(x => x.name === nm); n.push(`Crosses ${esc(nm)}${b && b.quake === 'resilient' ? ', which the app treats as quake-ready' : ', which you marked open'}. Check for closures and visible damage before you cross.`); }
+  if (S.mode === 'foot' && o.dist > 15000) n.push(`That's a long walk (${fmtKm(o.dist)}). Plan water and rest stops, or check whether someone closer can go.`);
+  if (o.kind.startsWith('corridor')) n.push('No street directions (offline or the routing service is down): these are compass headings along the safest line. Follow streets that stay close to it.');
+  return n;
+}
+
+/* ---------- route cards ---------- */
 function onMyWayText(r) {
-  const b = r.best, how = { foot: 'walking', bike: 'biking', car: 'driving' }[S.mode];
+  const b = r.opts[r.sel], how = { foot: 'walking', bike: 'biking', car: 'driving' }[S.mode];
   return `Path2Safe: I'm on my way to you, about ${fmtMin(b.dur)} ${how} in normal conditions (${fmtKm(b.dist)}), likely longer after the quake. Stay where you are if it's safe. ` + (checkinText() || '');
 }
-function routeCard(r) {
+function routeCard(r, ri) {
   const who = r.label || esc(nameOf(r.p)) + ' → ' + esc(r.target.name);
   if (r.fail) return `<div class="route" style="border-color:${r.col}"><b>${who}</b><div class="warn">No safe path found. Every crossing is closed or blocked. Stay put, shelter safely, and send a text check-in.</div></div>`;
-  const b = r.best, hzM = b.ex.total, pct = b.ex.len ? Math.round(100 * hzM / b.ex.len) : 0;
+  const b = r.opts[r.sel], hzM = b.ex.total, pct = b.ex.len ? Math.round(100 * hzM / b.ex.len) : 0;
   const parts = Object.entries(b.ex.by).filter(([, m]) => m >= 20).sort((x, y) => y[1] - x[1]).map(([k, m]) => `${KIND[k] || k} ${fmtKm(m)}`).join(', ');
-  const kind = b.kind === 'corridor' ? 'Offline safe-corridor line (follow streets that stay close to it)' : b.kind === 'street-safe' ? 'Street route steered around hazards' : 'Most direct street route (already the safest)';
+  const choices = r.opts.length > 1 ? `<div class="opts">${r.opts.map((o, oi) => `<button class="opt" data-opt="${ri}:${oi}" aria-pressed="${oi === r.sel}"><b>${o.tags.join(' · ')}</b><span>${fmtKm(o.dist)} · ${fmtMin(o.dur)} · ${fmtKm(o.ex.total)} in hazards</span></button>`).join('')}</div>` : '';
+  const notes = routeSafety(b);
   const tp = r.target.person, sms = tp && r.p === S.me && tp.tel ? `<div class="row" style="margin-top:6px"><a class="btn ghost sm" style="text-decoration:none" href="sms:${encodeURIComponent(tp.tel)}${isIOS ? '&' : '?'}body=${encodeURIComponent(onMyWayText(r))}">Text ${esc(tp.name)} you're coming</a></div>` : '';
-  return `<div class="route" style="border-color:${r.col}"><b>${who}</b>${r.label ? '' : ' · ' + (STATUS[r.p.status] || 'OK')}
+  const steps = b.steps.map(s => `<li><span>${esc(s.text)}</span>${s.dist >= 15 ? `<span class="meta"> · ${fmtKm(s.dist)}</span>` : ''}${s.warn && s.warn.length ? `<div class="stepwarn">⚠ ${esc(s.warn.join('; '))}</div>` : ''}</li>`).join('');
+  return `<div class="route" style="border-color:${r.col}" data-card="${ri}"><b>${who}</b>${r.label ? '' : ' · ' + (STATUS[r.p.status] || 'OK')}
     <div class="row" style="gap:14px"><span><b>${fmtKm(b.dist)}</b></span><span>about <b>${fmtMin(b.dur)}</b> in normal conditions</span></div>
-    <div class="meta">${kind}${b.used.length ? ' · crosses ' + esc(b.used.join(', ')) : ''}</div>
-    <div class="meta">Through hazard areas: ${fmtKm(hzM)} (${pct}%)${parts ? ': ' + esc(parts) : ''}</div><div class="bar"><i style="width:${pct}%"></i></div>
-    ${r.extra ? '<div class="warn">The street route runs through ' + fmtKm(r.extra) + ' more hazard zone than the safe corridor (thin dashed line). Where you can, use streets closer to the corridor.</div>' : ''}
-    ${!r.label && r.p.status !== 'ok' && r.p.status !== 'none' ? '<div class="warn">' + esc(nameOf(r.p)) + ' is marked ' + STATUS[r.p.status] + '. They may not be able to travel.</div>' : ''}${sms}</div>`;
+    <div class="meta">${b.used.length ? 'Crosses ' + esc(b.used.join(', ')) + ' · ' : ''}Through hazard areas: ${fmtKm(hzM)} (${pct}%)${parts ? ': ' + esc(parts) : ''}</div><div class="bar"><i style="width:${pct}%"></i></div>
+    ${choices}
+    ${notes.length ? `<ul class="notes">${notes.map(t => `<li>${t}</li>`).join('')}</ul>` : ''}
+    ${!r.label && r.p.status !== 'ok' && r.p.status !== 'none' ? '<div class="warn">' + esc(nameOf(r.p)) + ' is marked ' + STATUS[r.p.status] + '. They may not be able to travel.</div>' : ''}${sms}
+    <details class="dirs"${ri === lastPlan.focus ? ' open' : ''}><summary>Turn-by-turn directions (${b.steps.length} steps)</summary><ol>${steps}</ol></details></div>`;
+}
+let lastPlan = { cards: [], head: '', focus: 0 };
+function drawPlan() {
+  lyRoutes.clearLayers();
+  if (lastPlan.flag) lastPlan.flag.addTo(lyRoutes);
+  lastPlan.cards.forEach((r, ri) => {
+    if (r.fail) return;
+    if (ri === lastPlan.focus) r.opts.forEach((o, oi) => { if (oi !== r.sel) L.polyline(o.line, { color: '#5B6770', weight: 4, opacity: .55, dashArray: '2 7' }).bindTooltip(o.tags.join(' · ') + ' (tap to use)').on('click', () => { r.sel = oi; renderPlanResults(); }).addTo(lyRoutes); });
+    const o = r.opts[r.sel];
+    L.polyline(o.line, { color: '#fff', weight: 8, opacity: .9 }).addTo(lyRoutes);
+    L.polyline(o.line, { color: r.col, weight: ri === lastPlan.focus ? 6 : 4, opacity: .95, dashArray: o.kind.startsWith('corridor') ? '8 8' : null }).bindTooltip(r.label || nameOf(r.p)).addTo(lyRoutes);
+  });
+}
+function renderPlanResults() {
+  const n = lastPlan.cards.length;
+  $('#routes').innerHTML = `<div class="planhead"><b>${esc(lastPlan.title)}</b><button class="linkbtn" data-editplan>Change plan</button></div>` + lastPlan.head + generalSafety() + lastPlan.cards.map(routeCard).join('')
+    + `<p class="src">Expect debris, downed lines and closures the data can't show. Walking is usually the most reliable way to move after a big quake.${navigator.onLine ? '' : ' Offline: showing compass-heading lines only.'}</p><div class="hr"></div>`;
+  drawPlan();
 }
 
 async function planRoutes() {
@@ -416,28 +515,32 @@ async function planRoutes() {
   else { const p = S.places.find(x => x.id === pl.place); if (!p) return toast('Save the school or release site first.'); target = { name: p.name, lat: p.lat, lng: p.lng }; }
   const travelers = whoIds().map(byId).filter(Boolean);
   if (!travelers.length) return toast(located().length ? "Choose who's going." : 'No one has a location yet. Share yours on the Family screen.');
-  $('#routes').innerHTML = '<p class="hint">Planning…</p>'; lyRoutes.clearLayers();
+  $('#routes').innerHTML = '<p class="hint">Planning routes and alternatives…</p>'; lyRoutes.clearLayers();
   await new Promise(r => setTimeout(r, 30));
-  if (g === 'pickup') L.marker([target.lat, target.lng], { icon: L.divIcon({ className: '', html: `<div class="flag">Pick up: ${esc(target.name)}</div>`, iconSize: null, iconAnchor: [0, 12] }), zIndexOffset: 2000 }).addTo(lyRoutes);
   const results = await routeLeg(target, travelers, en);
   let head = '', leg2 = [];
   const kids = pl.kids.map(id => S.members[id]).filter(Boolean).map(m => m.name);
   if (g === 'person') {
     const m = target.person;
-    head = m.status === 'injured' ? `<div class="warn" style="margin-top:12px"><b>${esc(m.name)} is marked Injured.</b> Call 911 if you can get through and stay with them if it's safe. Don't enter damaged buildings or cross downed lines to reach them.</div>`
-      : m.status === 'help' ? `<div class="warn" style="margin-top:12px"><b>${esc(m.name)} needs help.</b> Go only if the route is safe for you; otherwise send someone closer.</div>` : '';
-    const ok = results.filter(r => r.best).sort((a, b) => a.best.dur - b.best.dur);
-    if (ok.length > 1) head += `<p class="meta" style="margin-top:10px">Closest: <b>${esc(nameOf(ok[0].p))}</b>, about ${fmtMin(ok[0].best.dur)}.</p>`;
+    head = m.status === 'injured' ? `<div class="warn" style="margin-top:8px"><b>${esc(m.name)} is marked Injured.</b> Call 911 if you can get through and stay with them if it's safe. Don't enter damaged buildings or cross downed lines to reach them.</div>`
+      : m.status === 'help' ? `<div class="warn" style="margin-top:8px"><b>${esc(m.name)} needs help.</b> Go only if the route is safe for you; otherwise send someone closer.</div>` : '';
+    const ok = results.filter(r => r.opts).sort((a, b) => a.opts[0].dur - b.opts[0].dur);
+    if (ok.length > 1) head += `<p class="meta" style="margin-top:8px">Closest: <b>${esc(nameOf(ok[0].p))}</b>, about ${fmtMin(ok[0].opts[0].dur)}.</p>`;
   }
   if (g === 'pickup') {
-    head = `<p class="meta" style="margin-top:12px">Picking up ${kids.length ? '<b>' + esc(kids.join(', ')) + '</b>' : 'your children'} at <b>${esc(target.name)}</b>. Bring photo ID; the school may send you to its release site instead.</p>`;
+    head = `<p class="meta" style="margin-top:8px">Picking up ${kids.length ? '<b>' + esc(kids.join(', ')) + '</b>' : 'your children'} at <b>${esc(target.name)}</b>. Bring photo ID; the school may send you to its release site instead.</p>`;
     const th = thenTarget();
     if (th && E.hav([th.lat, th.lng], [target.lat, target.lng]) > 80) leg2 = await routeLeg(th, [{ id: 'leg2', lat: target.lat, lng: target.lng, status: 'ok', legCol: '#5B6770' }], en, `Then ${esc(target.name)} → ${esc(th.name)}${kids.length ? ' with ' + esc(kids.join(', ')) : ''}`);
   }
-  const all = [...results, ...leg2].filter(r => r.best).flatMap(r => r.best.line); if (all.length) map.fitBounds(L.latLngBounds(all), { padding: [30, 30] });
-  $('#routes').innerHTML = head + [...results, ...leg2].map(routeCard).join('') + `<p class="src">Expect debris, downed lines and closures the data can't show. Walking is usually the most reliable way to move after a big quake.${navigator.onLine ? '' : ' Offline: showing corridor lines only.'}</p>`;
+  const cards = [...results, ...leg2], meIdx = cards.findIndex(r => r.p === S.me);
+  lastPlan = { cards, head, focus: meIdx >= 0 ? meIdx : 0, title: g === 'person' ? 'Routes to ' + target.name : g === 'pickup' ? 'Pickup at ' + target.name : 'Routes to ' + target.name,
+    flag: g === 'pickup' ? L.marker([target.lat, target.lng], { icon: L.divIcon({ className: '', html: `<div class="flag">Pick up: ${esc(target.name)}</div>`, iconSize: null, iconAnchor: [0, 12] }), zIndexOffset: 2000 }) : null };
+  renderPlanResults();
+  const all = cards.filter(r => r.opts).flatMap(r => r.opts.flatMap(o => o.line)); if (all.length) map.fitBounds(L.latLngBounds(all), { padding: [30, 30] });
+  $('#t-reunite').scrollTop = 0; $('#sheet').scrollTop = 0;
 }
 function startPlan(goal, set) {
+  lastPlan = { cards: [], head: '', focus: 0 }; lyRoutes.clearLayers();
   const pl = plan(); pl.goal = goal; pl.who = null; Object.assign(pl, set || {});
   if (goal === 'pickup' && !(set && set.place)) { const cur = S.places.find(p => p.id === pl.place), sch = S.places.find(p => SCHOOLISH.test(p.name)); if (sch && !(cur && SCHOOLISH.test(cur.name))) pl.place = sch.id; } save(); goTab('reunite'); renderPlan(); $('#routes').innerHTML = ''; }
 
@@ -670,6 +773,11 @@ $('#pickMeet').onclick = () => findPlace({ title: 'Choose a meeting point', name
 $('#fairBtn').onclick = fairestPoint;
 $$('#modeSeg button').forEach(b => { b.setAttribute('aria-pressed', b.dataset.m === S.mode); b.onclick = () => { S.mode = b.dataset.m; save(); $$('#modeSeg button').forEach(x => x.setAttribute('aria-pressed', x === b)); drawBridges(); }; });
 $('#planBtn').onclick = planRoutes;
+$('#routes').onclick = e => {
+  const o = e.target.closest('[data-opt]'); if (o) { const [ri, oi] = o.dataset.opt.split(':').map(Number); lastPlan.cards[ri].sel = oi; lastPlan.focus = ri; renderPlanResults(); return; }
+  if (e.target.closest('[data-editplan]')) { $('#goalSeg').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+  const c = e.target.closest('[data-card]'); if (c && !e.target.closest('a,button,summary,details') && +c.dataset.card !== lastPlan.focus) { lastPlan.focus = +c.dataset.card; drawPlan(); }
+};
 $$('#goalSeg button').forEach(b => b.onclick = () => startPlan(b.dataset.g));
 $('#personSel').onchange = e => { plan().person = e.target.value; plan().who = null; save(); renderPlan(); };
 $('#pickSel').onchange = e => { plan().place = e.target.value; save(); renderPlan(); };

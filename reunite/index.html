@@ -80,6 +80,20 @@ textarea{min-height:90px;resize:vertical}
 .tag.help{background:#fdf3d1;color:#6b5200}.tag.injured{background:#f9e3db;color:var(--alert)}.tag.stale,.tag.none{background:var(--soft);color:var(--muted)}
 .hit{display:grid;gap:2px;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:10px 0;cursor:pointer;color:var(--ink);font-size:15px}
 .hit:last-child{border-bottom:0}
+.planhead{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.planhead b{font-size:17px}
+.opts{display:grid;gap:6px;margin:10px 0}
+.opt{display:grid;gap:1px;text-align:left;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:10px;padding:8px 12px;cursor:pointer;font-size:14px}
+.opt span{color:var(--muted);font-size:13px}
+.opt[aria-pressed=true]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.notes{margin:8px 0;padding-left:18px;font-size:14px;color:var(--alert)}
+.notes li{margin:3px 0}
+.safety{background:var(--soft);border-radius:10px;padding:8px 12px;margin:10px 0}
+.safety ul{margin:6px 0;padding-left:18px;font-size:14px}.safety li{margin:4px 0}
+.dirs{margin-top:8px}.dirs summary{font-weight:600;font-size:14px}
+.dirs ol{margin:6px 0;padding-left:22px;font-size:14px}.dirs li{margin:6px 0}
+.stepwarn{color:var(--alert);font-size:13px}
+.hr{border-top:1px solid var(--line);margin:14px 0 4px}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:99px;padding:6px 12px;min-height:36px;font-size:14px;cursor:pointer}
 .chip[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
@@ -163,6 +177,7 @@ details summary{cursor:pointer;min-height:32px}
   </section>
 
   <section class="pane" id="t-reunite">
+    <div id="routes"></div>
     <div class="seg" id="goalSeg" role="group" aria-label="What do you need to do?"><button data-g="meet">Meet up</button><button data-g="person">Go to someone</button><button data-g="pickup">Pick up</button></div>
     <div id="gMeet">
       <label class="f" for="meetSel">Meeting point</label>
@@ -192,7 +207,6 @@ details summary{cursor:pointer;min-height:32px}
     <label class="f">Travel by</label>
     <div class="seg" id="modeSeg"><button data-m="foot" aria-pressed="true">Walk</button><button data-m="bike">Bike</button><button data-m="car">Drive</button></div>
     <div class="row" style="margin-top:12px"><button class="btn grow" id="planBtn">Plan routes</button></div>
-    <div id="routes"></div>
   </section>
 
   <section class="pane" id="t-checkin">
