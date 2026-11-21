@@ -488,6 +488,8 @@ const AREA = { w: -123.25, s: 45.15, e: -122.10, n: 45.80 };
 const inArea = (la, ln) => la > AREA.s && la < AREA.n && ln > AREA.w && ln < AREA.e;
 const TYPE = { school: 'School', kindergarten: 'Preschool', childcare: 'Child care', college: 'College', university: 'University', hospital: 'Hospital', clinic: 'Clinic', doctors: 'Clinic', pharmacy: 'Pharmacy', supermarket: 'Grocery', library: 'Library', place_of_worship: 'Place of worship', community_centre: 'Community centre', fire_station: 'Fire station', police: 'Police', park: 'Park', sports_centre: 'Sports centre', swimming_pool: 'Pool', stadium: 'Stadium', townhall: 'City hall', fuel: 'Gas station', restaurant: 'Restaurant', cafe: 'Café', fast_food: 'Restaurant', bank: 'Bank', hotel: 'Hotel', mall: 'Shopping centre', department_store: 'Store', hardware: 'Hardware store', doityourself: 'Hardware store', office: 'Office', station: 'Station', house: 'Address', residential: 'Address', building: 'Building', apartments: 'Apartments' };
 const tidy = s => String(s || '').replace(/\bNortheast\b/g, 'NE').replace(/\bNorthwest\b/g, 'NW').replace(/\bSoutheast\b/g, 'SE').replace(/\bSouthwest\b/g, 'SW').replace(/\bNorth\b(?= \w)/g, 'N').replace(/\bAvenue\b/g, 'Ave').replace(/\bStreet\b/g, 'St').replace(/\bBoulevard\b/g, 'Blvd').replace(/\bDrive\b/g, 'Dr').replace(/\bRoad\b/g, 'Rd').replace(/\bHighway\b/g, 'Hwy');
+const ABBR = { saint: 'st', street: 'st', avenue: 'ave', boulevard: 'blvd', drive: 'dr', road: 'rd', northeast: 'ne', northwest: 'nw', southeast: 'se', southwest: 'sw', highway: 'hwy', elementary: 'elem', centre: 'center', mount: 'mt' };
+const toks = t => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z0-9]+/).filter(w => w && !['the', 'of', 'and', 'at', 'in'].includes(w)).map(w => ABBR[w] || w);
 async function getJson(u, ms) { const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), ms); try { return await (await fetch(u, { signal: ctl.signal })).json(); } finally { clearTimeout(to); } }
 // Finds street addresses and named places (schools, businesses, parks…) inside the three-county area, nearest first.
 async function geocode(q, near) {
@@ -508,15 +510,18 @@ async function geocode(q, near) {
   let hits = [...(a.value || []), ...(b.value || [])];
   if (!hits.length && a.status === 'fulfilled') { try { hits = await nom(false); } catch (e) { } }   // nothing nearby: look wider
   if (!hits.length && a.status === 'rejected' && b.status === 'rejected') return null;
-  const out = [];
+  const out = [], words = toks(q);
   for (const h of hits) {
     if (!h.name && !h.street) continue;
     h.d = E.hav(ref, [h.lat, h.lng]); h.far = !inArea(h.lat, h.lng);
-    const dup = out.find(o => E.hav([o.lat, o.lng], [h.lat, h.lng]) < 120 && (o.name || o.street).toLowerCase() === (h.name || h.street).toLowerCase());
+    const hay = new Set(toks([h.name, h.street, h.city, h.type].join(' ')));
+    h.match = (words.length ? words.filter(w => hay.has(w)).length / words.length : 0) + (toks(h.name).join(' ') === words.join(' ') ? .5 : 0);
+    const roadOnly = !h.name || h.name === h.street;
+    const dup = out.find(o => (o.name || o.street).toLowerCase() === (h.name || h.street).toLowerCase() && E.hav([o.lat, o.lng], [h.lat, h.lng]) < (roadOnly ? 1500 : 120));
     if (dup) { dup.type = dup.type || h.type; dup.street = dup.street || h.street; dup.city = dup.city || h.city; continue; }
     out.push(h);
   }
-  out.sort((x, y) => (x.far - y.far) || (x.d - y.d));
+  out.sort((x, y) => (x.far - y.far) || (Math.round(y.match * 4) - Math.round(x.match * 4)) || (x.d - y.d));
   return out.slice(0, 8).map(h => ({ ...h, short: h.name || h.street || h.city, label: [h.name, h.street, h.city].filter(Boolean).join(', ') }));
 }
 // opts: {title, nameLabel (omit to skip the name), mapPrompt, done(name, lat, lng, label)}
