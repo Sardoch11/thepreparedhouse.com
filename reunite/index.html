@@ -36,9 +36,16 @@ main{position:relative;display:grid;grid-template-columns:var(--sheet) 1fr;min-h
 .leaflet-tile-pane{filter:grayscale(1) contrast(.92) brightness(1.06)}
 .leaflet-control-zoom a{color:var(--ink)!important}
 aside{background:#fff;border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;z-index:500}
-nav.tabs{display:flex;gap:4px;padding:0 10px;border-bottom:1px solid var(--line);overflow-x:auto;flex:none}
-nav.tabs button{flex:0 0 auto;border:0;background:none;padding:12px 8px;min-height:46px;font-size:14px;color:var(--muted);border-bottom:2px solid transparent;cursor:pointer}
-nav.tabs button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
+nav.tabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;padding:10px;border-bottom:1px solid var(--line);flex:none;background:#fff}
+nav.tabs button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:0;border-radius:12px;background:var(--soft);color:var(--muted);min-height:56px;padding:6px 2px;font-size:12px;cursor:pointer}
+nav.tabs svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+nav.tabs button[aria-selected=true]{background:var(--ink);color:#fff;font-weight:600}
+.steps{list-style:none;margin:6px 0 0;padding:0}
+.steps li{display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:center;padding:7px 0;font-size:14px}
+.steps .ck{width:20px;height:20px;border-radius:50%;border:1.5px solid #c9cdd1;display:grid;place-items:center;font-size:12px;color:#fff}
+.steps .done .ck{background:var(--accent);border-color:var(--accent)}
+.steps .done span{color:var(--muted);text-decoration:line-through}
+.progressbar{height:4px;background:var(--line);border-radius:2px;overflow:hidden;margin-top:8px}.progressbar i{display:block;height:100%;background:var(--accent)}
 .pane{display:none;overflow-y:auto;padding:20px 20px 32px;flex:1}
 .pane.on{display:block}
 h2{font-size:20px;font-weight:650;letter-spacing:-.01em;margin:0 0 6px;line-height:1.2}
@@ -97,7 +104,9 @@ details summary{cursor:pointer;min-height:32px}
  main{grid-template-columns:1fr;grid-template-rows:1fr auto}
  #map{grid-row:1}
  aside{grid-row:2;border-right:0;border-top:1px solid var(--line);max-height:55dvh;border-radius:16px 16px 0 0;box-shadow:0 -6px 20px rgba(0,0,0,.08)}
- aside.min{max-height:52px}
+ aside.min{max-height:96px}
+ nav.tabs{order:3;border-bottom:0;border-top:1px solid var(--line);padding-bottom:max(10px,env(safe-area-inset-bottom))}
+ .grab{order:0}.pane{order:2}
  aside.min .pane{display:none}
  .grab{display:block!important}
  .pane{padding-bottom:max(28px,env(safe-area-inset-bottom))}
@@ -116,69 +125,61 @@ details summary{cursor:pointer;min-height:32px}
 <main>
 <aside id="sheet">
   <button class="grab" id="grab" aria-label="Show or hide panel"></button>
-  <nav class="tabs" role="tablist">
-    <button role="tab" data-t="family" aria-selected="true">Family</button>
-    <button role="tab" data-t="reunite">Reunite</button>
-    <button role="tab" data-t="checkin">Check-in</button>
-    <button role="tab" data-t="data">Map data</button>
-    <button role="tab" data-t="setup">Setup</button>
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button role="tab" data-t="family" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16.5 11a3 3 0 1 0 0-6"/><path d="M18 14.6c2 .6 3.2 2.4 3.5 5.4"/></svg><span>Family</span></button>
+    <button role="tab" data-t="reunite"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 3.5L16 11H5"/><path d="M12 21c0-4 7-4 7-8"/></svg><span>Reunite</span></button>
+    <button role="tab" data-t="checkin"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4V5Z"/><path d="M8.5 10.5l2.2 2.2 4.8-4.8"/></svg><span>Check-in</span></button>
+    <button role="tab" data-t="data"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2.5 8 12 13l9.5-5L12 3Z"/><path d="M2.5 12.5 12 17.5l9.5-5"/><path d="M2.5 16.5 12 21.5l9.5-5"/></svg><span>Map</span></button>
+    <button role="tab" data-t="setup"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z"/><path d="M19.4 13.5c.1-.5.1-1 .1-1.5s0-1-.1-1.5l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.5A7.4 7.4 0 0 0 7 6.5l-2.4-1-2 3.4 2 1.6c-.1.5-.1 1-.1 1.5s0 1 .1 1.5l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 2.6-1.5l2.4 1 2-3.4-2-1.6Z"/></svg><span>Setup</span></button>
   </nav>
 
   <section class="pane on" id="t-family">
-    <h2>Where is everyone?</h2>
+    <div id="setupCard"></div>
     <div class="card">
-      <div class="row"><div class="grow"><label class="f" for="myName">Your name</label><input id="myName" type="text" autocomplete="given-name" placeholder="Your name"></div></div>
-      <label class="f">Your status</label>
-      <div class="seg status" id="mySt"><button data-s="ok">I'm OK</button><button data-s="help">Need help</button><button data-s="injured">Injured</button></div>
+      <input id="myName" type="text" autocomplete="given-name" placeholder="Your name" aria-label="Your name">
+      <div class="seg status" id="mySt" style="margin-top:10px" aria-label="Your status"><button data-s="ok">I'm OK</button><button data-s="help">Need help</button><button data-s="injured">Injured</button></div>
       <div class="row" style="margin-top:10px">
-        <button class="btn" id="gpsBtn">Share my GPS</button>
-        <button class="btn ghost" id="pickMe">Set my spot</button>
+        <button class="btn grow" id="gpsBtn">Share location</button>
+        <button class="btn ghost" id="pickMe">Set by address</button>
       </div>
-      <p class="hint" id="myLoc">No location yet.</p>
+      <p class="hint" id="myLoc" style="margin-bottom:0">No location yet.</p>
     </div>
-    <h3>Family members</h3>
-    <div id="members"><p class="hint">No one yet. Add people from your contacts, join a family in Setup, or paste a text check-in.</p></div>
+    <h3>Family</h3>
+    <div id="members"><p class="hint">No one yet.</p></div>
     <div class="row" style="margin-top:12px">
-      <button class="btn sm" id="pickContacts">Add from contacts</button>
-      <label class="btn ghost sm" for="vcfInput" id="vcfLabel">Import a contact card (.vcf)</label>
+      <button class="btn sm" id="pickContacts">From contacts</button>
+      <label class="btn ghost sm" for="vcfInput" id="vcfLabel">Import contact card</label>
       <input class="vis" type="file" id="vcfInput" accept=".vcf,text/vcard,text/x-vcard" multiple>
+      <button class="btn ghost sm" id="addMember">By address</button>
     </div>
-    <p class="hint" id="contactsHint">Contacts stay on this phone. We never upload your address book.</p>
-    <div class="row">
-      <button class="linkbtn" id="addMember">Add someone by address or map</button>
-      <button class="linkbtn" id="demoBtn">Load demo family</button>
-    </div>
+    <p class="hint" id="contactsHint">Contacts stay on this phone.</p>
   </section>
 
   <section class="pane" id="t-reunite">
-    <h2>Plan the way back together</h2>
-    <p class="hint">Routes steer around high and very high liquefaction zones and cross rivers only on bridges marked open.</p>
-    <label class="f" for="meetSel">Meeting point</label>
+    <label class="f" for="meetSel" style="margin-top:0">Meeting point</label>
     <select id="meetSel"></select>
     <div class="row" style="margin-top:8px">
-      <button class="btn ghost sm" id="pickMeet">Find an address or pick on map</button>
-      <button class="btn ghost sm" id="fairBtn">Suggest the fairest point</button>
+      <button class="btn ghost sm" id="pickMeet">Find an address</button>
+      <button class="btn ghost sm" id="fairBtn">Suggest the fairest</button>
     </div>
-    <label class="f">How people will travel</label>
+    <label class="f">Travel by</label>
     <div class="seg" id="modeSeg"><button data-m="foot" aria-pressed="true">Walk</button><button data-m="bike">Bike</button><button data-m="car">Drive</button></div>
     <div class="row" style="margin-top:12px"><button class="btn grow" id="planBtn">Plan routes for everyone</button></div>
     <div id="routes"></div>
   </section>
 
   <section class="pane" id="t-checkin">
-    <h2>Text check-in</h2>
-    <p class="hint">After a big quake, texts often get through when calls and data don't. Send this to your family and your out-of-area contact.</p>
+    <p class="hint" style="margin-top:0">Texts often get through when calls and data don't. Send this to family and your out-of-area contact.</p>
     <div class="card"><div class="mono" id="ciText">Set your location first.</div>
       <div class="row" style="margin-top:10px"><button class="btn sm" id="ciCopy">Copy message</button><a class="btn ghost sm" id="ciSms" href="#" style="text-decoration:none">Open in Messages</a></div></div>
-    <h3>Got a check-in from someone?</h3>
+    <h3>Received a check-in?</h3>
     <textarea id="ciPaste" placeholder="Paste the text you received"></textarea>
     <div class="row" style="margin-top:8px"><button class="btn sm" id="ciAdd">Add to map</button></div>
     <p class="hint" id="ciMsg"></p>
   </section>
 
   <section class="pane" id="t-data">
-    <h2>What's on the map</h2>
-    <p class="hint">Downloaded once for the Portland metro area and kept on this phone, so routing works offline. Tick "Avoid" or "Prefer" to choose what routes take into account.</p>
+    <p class="hint" style="margin-top:0">Saved on this phone for the Portland metro area, so routing works offline.</p>
     <div id="layerList"></div>
     <div class="row" style="margin-top:10px"><button class="btn sm" id="hzLoad">Download / refresh all layers</button></div>
     <h3>Also on the map</h3>
@@ -207,18 +208,18 @@ details summary{cursor:pointer;min-height:32px}
   </section>
 
   <section class="pane" id="t-setup">
-    <h2>Family setup</h2>
-    <h3>Saved places</h3>
+    <h3 style="margin-top:0">Saved places</h3>
     <div id="places"></div>
-    <div class="row"><button class="btn ghost sm" id="addPlace">Add a place by address or map</button></div>
-    <h3>Live family sharing</h3>
-    <p class="hint">Everyone enters the same family code. Locations sync through a Firebase Realtime Database you control (see README). Leave blank to use text check-ins only.</p>
-    <label class="f" for="fbUrl">Database URL</label><input id="fbUrl" type="url" placeholder="https://your-project-default-rtdb.firebaseio.com">
-    <label class="f" for="famCode">Family code</label><input id="famCode" type="text" placeholder="e.g. 7 random words or a long code">
-    <div class="row" style="margin-top:8px"><button class="btn sm" id="joinBtn">Join family</button><button class="btn ghost sm" id="newCode">Make a new code</button></div>
-    <p class="hint" id="syncMsg"></p>
-    <h3>Reset</h3>
-    <button class="btn ghost sm" id="resetBtn">Clear everyone and places on this phone</button>
+    <div class="row"><button class="btn ghost sm" id="addPlace">Add a place</button></div>
+    <details style="margin-top:22px">
+      <summary>Live family sharing</summary>
+      <p class="hint">Everyone enters the same database and family code. Without it, use text check-ins.</p>
+      <label class="f" for="fbUrl">Database URL</label><input id="fbUrl" type="url" placeholder="https://your-project-default-rtdb.firebaseio.com">
+      <label class="f" for="famCode">Family code</label><input id="famCode" type="text" placeholder="A long code only your family knows">
+      <div class="row" style="margin-top:8px"><button class="btn sm" id="joinBtn">Join family</button><button class="btn ghost sm" id="newCode">Make a new code</button></div>
+      <p class="hint" id="syncMsg"></p>
+    </details>
+    <div class="row" style="margin-top:22px;gap:18px"><button class="linkbtn" id="demoBtn">Load demo family</button><button class="linkbtn" id="resetBtn">Clear this phone</button></div>
     <p class="src" style="margin-top:16px">Prototype for The Prepared House capstone. Not a replacement for 911, official alerts or your written household plan.</p>
   </section>
 </aside>

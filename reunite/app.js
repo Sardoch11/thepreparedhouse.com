@@ -159,7 +159,7 @@ function renderMembers() {
       <div class="meta">${meta}</div></div>
       <div class="row">${act}<button class="btn ghost sm" data-del="${m.id}" aria-label="Remove ${esc(m.name)}">✕</button></div></div>`;
   }).join('') : '<p class="hint">No one yet. Add people from your contacts, join a family in Setup, or paste a text check-in.</p>';
-  renderCheckin(); renderMeetSel(); drawPeople();
+  renderCheckin(); renderMeetSel(); drawPeople(); renderSetup();
 }
 function hzWarn(p) { if (!H || p.lat == null) return ''; const h = E.hazardAt(H, p.lat, p.lng); return h ? ` · inside a ${KIND[h.kind]} area` : ''; }
 
@@ -167,8 +167,8 @@ function hzWarn(p) { if (!H || p.lat == null) return ''; const h = E.hazardAt(H,
 let watchId = null;
 function startGps() {
   if (!navigator.geolocation) return toast('This browser has no GPS access.');
-  if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; setGpsPill(); $('#gpsBtn').textContent = 'Share my GPS'; return; }
-  $('#gpsBtn').textContent = 'Stop GPS';
+  if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; setGpsPill(); $('#gpsBtn').textContent = 'Share location'; return; }
+  $('#gpsBtn').textContent = 'Stop sharing';
   watchId = navigator.geolocation.watchPosition(pos => {
     Object.assign(S.me, { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: Math.round(pos.coords.accuracy), ts: Date.now(), src: 'GPS ±' + Math.round(pos.coords.accuracy) + ' m' });
     if (!S.me._centered) { map.setView([S.me.lat, S.me.lng], 14); S.me._centered = true; }
@@ -505,14 +505,41 @@ $('#vcfInput').onchange = async e => {
   e.target.value = ''; out.length ? addContacts(out) : toast('No contacts found in that file.');
 };
 
+/* ---------- getting started: five steps, shown until done ---------- */
+const STEPS = [
+  { k: 'name', t: 'Add your name', done: () => !!(S.me.name || '').trim(), go: () => $('#myName').focus() },
+  { k: 'spot', t: 'Share or set your location', done: () => S.me.lat != null, go: () => $('#pickMe').click() },
+  { k: 'family', t: 'Add your family', done: () => Object.keys(S.members).length > 0, go: () => (hasPicker ? $('#pickContacts') : $('#addMember')).click() },
+  { k: 'places', t: 'Save home, school and work', done: () => S.places.length > 0, go: () => { goTab('setup'); $('#addPlace').click(); } },
+  { k: 'meet', t: 'Choose a meeting point', done: () => !!S.meet, go: () => { goTab('reunite'); $('#pickMeet').click(); } }
+];
+function renderSetup() {
+  const box = $('#setupCard'); if (!box) return;
+  const n = STEPS.filter(x => x.done()).length;
+  if (n === STEPS.length || S.setupHidden) { box.innerHTML = ''; return; }
+  const next = STEPS.find(x => !x.done());
+  box.innerHTML = `<div class="card"><div class="row" style="justify-content:space-between"><span class="meta">Setup · ${n} of ${STEPS.length} done</span><button class="linkbtn" data-step-hide style="min-height:0;padding:0;font-size:13px">Hide</button></div>
+    <div class="progressbar"><i style="width:${n / STEPS.length * 100}%"></i></div>
+    <div class="row" style="justify-content:space-between;margin-top:10px"><b>${next.t}</b><button class="btn sm" data-step="${next.k}">${next.k === 'name' ? 'Add' : 'Start'}</button></div></div>`;
+}
+$('#setupCard').onclick = e => {
+  const b = e.target.closest('[data-step]'); if (b) STEPS.find(x => x.k === b.dataset.step).go();
+  if (e.target.closest('[data-step-hide]')) { S.setupHidden = true; save(); renderSetup(); }
+};
+function goTab(t) {
+  $$('nav.tabs button').forEach(x => x.setAttribute('aria-selected', x.dataset.t === t));
+  $$('.pane').forEach(p => p.classList.toggle('on', p.id === 't-' + t));
+  $('#sheet').classList.remove('min'); if (t === 'setup') renderPlaces(); if (t === 'reunite') renderMeetSel();
+}
+
 /* ---------- events ---------- */
 $$('nav.tabs button').forEach(b => b.onclick = () => {
-  $$('nav.tabs button').forEach(x => x.setAttribute('aria-selected', x === b));
-  $$('.pane').forEach(p => p.classList.toggle('on', p.id === 't-' + b.dataset.t));
-  $('#sheet').classList.remove('min'); if (b.dataset.t === 'setup') renderPlaces(); if (b.dataset.t === 'reunite') renderMeetSel();
+  // on a phone, tapping the open section again folds the panel down to show the map
+  if (b.getAttribute('aria-selected') === 'true' && innerWidth <= 760) { $('#sheet').classList.toggle('min'); return; }
+  goTab(b.dataset.t);
 });
 $('#grab').onclick = () => $('#sheet').classList.toggle('min');
-$('#myName').oninput = e => { S.me.name = e.target.value.slice(0, 40); save(); renderCheckin(); drawPeople(); };
+$('#myName').oninput = e => { S.me.name = e.target.value.slice(0, 40); save(); renderCheckin(); drawPeople(); renderSetup(); };
 $$('#mySt button').forEach(b => b.onclick = () => { S.me.status = b.dataset.s; S.me.ts = S.me.ts || Date.now(); save(); renderMembers(); syncPush(true); });
 $('#gpsBtn').onclick = startGps;
 $('#pickMe').onclick = () => findPlace({ title: 'Where are you?', mapPrompt: 'Tap where you are', done: (n, la, ln, label) => { Object.assign(S.me, { lat: la, lng: ln, ts: Date.now(), src: label === 'set on map' ? 'set on map' : 'by address' }); save(); renderMembers(); syncPush(true); } });
