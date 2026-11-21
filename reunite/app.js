@@ -379,7 +379,7 @@ function roadName(s) { const n = tidy(s.name), r = s.ref ? s.ref.split(';')[0] :
 function stepText(s, destName) {
   const dir = compass(s.brg), road = roadName(s), on = road ? ' on ' + road : '', onto = road ? ' onto ' + road : '', to = s.dest ? ' toward ' + s.dest.split(',')[0] : '', side = /left/.test(s.mod) ? 'left' : /right/.test(s.mod) ? 'right' : '';
   switch (s.type) {
-    case 'depart': return `Head ${dir}${on}`;
+    case 'depart': return `Head ${dir}${on || ' on the nearest street or path'}`;
     case 'arrive': return `Arrive at ${destName}`;
     case 'new name': case 'continue': return s.mod && s.mod !== 'straight' && TURN[s.mod] ? `${TURN[s.mod]} to stay heading ${dir}${on}` : `Continue ${dir}${on}`;
     case 'on ramp': return `Take the ramp heading ${dir}${to || onto}`;
@@ -388,7 +388,7 @@ function stepText(s, destName) {
     case 'fork': return `Keep ${side || 'straight'} at the fork, heading ${dir}${onto}`;
     case 'end of road': return `At the end of the road, turn ${side || 'onto the cross street'} heading ${dir}${onto}`;
     case 'roundabout': case 'rotary': case 'exit roundabout': case 'roundabout turn': return `At the roundabout, take ${s.exit ? 'exit ' + s.exit : 'the exit'} heading ${dir}${onto}`;
-    default: return `${TURN[s.mod] || 'Continue'}${road ? ' onto ' + road + ', heading ' + dir : ' and head ' + dir}`;
+    default: return `${TURN[s.mod] || 'Continue'}${road ? ' onto ' + road + ', heading ' + dir : ' onto the path or lane heading ' + dir}`;
   }
 }
 // Offline or corridor-only: compass legs from the line itself
@@ -404,6 +404,18 @@ function corridorSteps(line, destName) {
     let t; if (!i) t = `Head ${g.c}`; else { const dlt = ((g.brg - segs[i - 1].brg + 540) % 360) - 180; t = `${Math.abs(dlt) < 60 ? 'Bear' : 'Turn'} ${dlt > 0 ? 'right' : 'left'} and head ${g.c}`; }
     return { text: t, dist: g.dist, line: g.line };
   }).concat([{ text: 'Arrive at ' + destName, dist: 0, line: [] }]);
+}
+// Fold tiny jogs (footpaths, slip lanes) and repeated street names so directions stay readable.
+function simplify(raw) {
+  const st = raw.map(s => ({ ...s, line: s.line.slice() }));
+  for (let i = st.length - 2; i > 0; i--) if (st[i].dist < 60) { const prev = st[i - 1]; prev.dist += st[i].dist; prev.line.push(...st[i].line.slice(1)); st.splice(i, 1); }
+  const out = [];
+  for (const s of st) {
+    const last = out[out.length - 1], same = last && s.type !== 'arrive' && last.type !== 'depart' && roadName(s) === roadName(last);
+    if (same && (roadName(s) || compass(s.brg) === compass(last.brg))) { last.dist += s.dist; last.line.push(...s.line.slice(1)); continue; }
+    out.push(s);
+  }
+  return out;
 }
 function annotate(steps, en) {
   for (const s of steps) {
@@ -434,12 +446,12 @@ async function routeLeg(target, travelers, en, label) {
       opts = opts.filter(o => !o.bad.length);
     }
     if (!opts.length) corr.forEach((ln, i) => ln && opts.push({ kind: i ? 'corridor-cautious' : 'corridor', line: ln, ...evaluate(ln, en) }));
-    opts.forEach(o => { if (o.kind.startsWith('corridor')) { o.dist = o.ex.len; o.dur = o.dist / (CFG.speed[S.mode] / 3.6); o.steps = corridorSteps(o.line, target.name); } else o.steps = o.steps.map(s => ({ text: stepText(s, target.name), dist: s.dist, line: s.line })); annotate(o.steps, en); });
+    opts.forEach(o => { if (o.kind.startsWith('corridor')) { o.dist = o.ex.len; o.dur = o.dist / (CFG.speed[S.mode] / 3.6); o.steps = corridorSteps(o.line, target.name); } else o.steps = simplify(o.steps).map(s => ({ text: stepText(s, target.name), dist: s.dist, line: s.line })); annotate(o.steps, en); });
     opts.sort((a, b) => a.score - b.score);
     const keep = []; for (const o of opts) if (!keep.some(k => similar(k, o))) keep.push(o);
     opts = keep.slice(0, 3);
     const fast = opts.reduce((a, b) => b.dur < a.dur ? b : a), calm = opts.reduce((a, b) => b.ex.total < a.ex.total ? b : a);
-    opts.forEach((o, i) => { o.tags = []; if (!i) o.tags.push('Recommended'); if (o === fast && opts.length > 1) o.tags.push('Fastest'); if (o === calm && opts.length > 1) o.tags.push('Fewest hazards'); if (!o.tags.length) o.tags.push('Alternative'); });
+    opts.forEach((o, i) => { o.tags = []; if (!i) o.tags.push('Recommended'); if (o === fast && opts.length > 1) o.tags.push('Fastest'); if (o === calm && opts.length > 1) o.tags.push('Fewest hazards'); if (!o.tags.length) o.tags.push('Backup route'); });
     out.push({ p, col, label, target, opts, sel: 0 });
   }
   return out;
@@ -476,7 +488,10 @@ function routeCard(r, ri) {
   if (r.fail) return `<div class="route" style="border-color:${r.col}"><b>${who}</b><div class="warn">No safe path found. Every crossing is closed or blocked. Stay put, shelter safely, and send a text check-in.</div></div>`;
   const b = r.opts[r.sel], hzM = b.ex.total, pct = b.ex.len ? Math.round(100 * hzM / b.ex.len) : 0;
   const parts = Object.entries(b.ex.by).filter(([, m]) => m >= 20).sort((x, y) => y[1] - x[1]).map(([k, m]) => `${KIND[k] || k} ${fmtKm(m)}`).join(', ');
-  const choices = r.opts.length > 1 ? `<div class="opts">${r.opts.map((o, oi) => `<button class="opt" data-opt="${ri}:${oi}" aria-pressed="${oi === r.sel}"><b>${o.tags.join(' · ')}</b><span>${fmtKm(o.dist)} · ${fmtMin(o.dur)} · ${fmtKm(o.ex.total)} in hazards</span></button>`).join('')}</div>` : '';
+  const r0 = r.opts[0], dl = (v, f) => (v >= 0 ? '+' : '−') + f(Math.abs(v));
+  const why = o => o === r0 ? (o.used.length ? 'via ' + o.used.join(', ') : 'best balance of distance and hazards') : [Math.abs(o.dist - r0.dist) > 200 ? dl(o.dist - r0.dist, fmtKm) + ' distance' : '', Math.abs(o.ex.total - r0.ex.total) > 50 ? dl(o.ex.total - r0.ex.total, fmtKm) + ' in hazard areas' : '', o.used.join(',') !== r0.used.join(',') && o.used.length ? 'via ' + o.used.join(', ') : ''].filter(Boolean).join(', ') + (o.tags.includes('Backup route') ? '. Use it if the main route is blocked' : '');
+  const choices = r.opts.length > 1 ? `<div class="opts">${r.opts.map((o, oi) => `<button class="opt" data-opt="${ri}:${oi}" aria-pressed="${oi === r.sel}"><b>${o.tags.join(' · ')}</b><span>${fmtKm(o.dist)} · ${fmtMin(o.dur)} · ${fmtKm(o.ex.total)} in hazards</span><span>${esc(why(o))}</span></button>`).join('')}</div>`
+    : '<p class="meta" style="margin:8px 0">No other route avoids hazards better than this one.</p>';
   const notes = routeSafety(b);
   const tp = r.target.person, sms = tp && r.p === S.me && tp.tel ? `<div class="row" style="margin-top:6px"><a class="btn ghost sm" style="text-decoration:none" href="sms:${encodeURIComponent(tp.tel)}${isIOS ? '&' : '?'}body=${encodeURIComponent(onMyWayText(r))}">Text ${esc(tp.name)} you're coming</a></div>` : '';
   const steps = b.steps.map(s => `<li><span>${esc(s.text)}</span>${s.dist >= 15 ? `<span class="meta"> · ${fmtKm(s.dist)}</span>` : ''}${s.warn && s.warn.length ? `<div class="stepwarn">⚠ ${esc(s.warn.join('; '))}</div>` : ''}</li>`).join('');
