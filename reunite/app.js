@@ -484,20 +484,40 @@ function askName(label, cb) {
 /* ---------- find a location by address (or tap the map) ---------- */
 // OpenStreetMap Nominatim (search on request only, per its usage policy), Photon as fallback.
 const VIEWBOX = '-123.25,45.80,-122.10,45.15';
-async function geocode(q) {
-  const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 10000);
-  try {
-    const r = await fetch('https://nominatim.openstreetmap.org/search?' + new URLSearchParams({ q, format: 'jsonv2', limit: 5, countrycodes: 'us', viewbox: VIEWBOX, addressdetails: 1 }), { signal: ctl.signal });
-    const j = await r.json();
-    if (Array.isArray(j) && j.length) return j.map(x => ({ label: x.display_name.replace(/, United States$/, ''), short: x.name || x.display_name.split(',')[0], lat: +x.lat, lng: +x.lon }));
-  } catch (e) { } finally { clearTimeout(to); }
-  try {
-    const r = await fetch('https://photon.komoot.io/api/?' + new URLSearchParams({ q, limit: 5, lat: 45.52, lon: -122.67 }));
-    const j = await r.json();
+const AREA = { w: -123.25, s: 45.15, e: -122.10, n: 45.80 };
+const inArea = (la, ln) => la > AREA.s && la < AREA.n && ln > AREA.w && ln < AREA.e;
+const TYPE = { school: 'School', kindergarten: 'Preschool', childcare: 'Child care', college: 'College', university: 'University', hospital: 'Hospital', clinic: 'Clinic', doctors: 'Clinic', pharmacy: 'Pharmacy', supermarket: 'Grocery', library: 'Library', place_of_worship: 'Place of worship', community_centre: 'Community centre', fire_station: 'Fire station', police: 'Police', park: 'Park', sports_centre: 'Sports centre', swimming_pool: 'Pool', stadium: 'Stadium', townhall: 'City hall', fuel: 'Gas station', restaurant: 'Restaurant', cafe: 'Café', fast_food: 'Restaurant', bank: 'Bank', hotel: 'Hotel', mall: 'Shopping centre', department_store: 'Store', hardware: 'Hardware store', doityourself: 'Hardware store', office: 'Office', station: 'Station', house: 'Address', residential: 'Address', building: 'Building', apartments: 'Apartments' };
+const tidy = s => String(s || '').replace(/\bNortheast\b/g, 'NE').replace(/\bNorthwest\b/g, 'NW').replace(/\bSoutheast\b/g, 'SE').replace(/\bSouthwest\b/g, 'SW').replace(/\bNorth\b(?= \w)/g, 'N').replace(/\bAvenue\b/g, 'Ave').replace(/\bStreet\b/g, 'St').replace(/\bBoulevard\b/g, 'Blvd').replace(/\bDrive\b/g, 'Dr').replace(/\bRoad\b/g, 'Rd').replace(/\bHighway\b/g, 'Hwy');
+async function getJson(u, ms) { const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), ms); try { return await (await fetch(u, { signal: ctl.signal })).json(); } finally { clearTimeout(to); } }
+// Finds street addresses and named places (schools, businesses, parks…) inside the three-county area, nearest first.
+async function geocode(q, near) {
+  const ref = near || (S.me.lat != null ? [S.me.lat, S.me.lng] : [map.getCenter().lat, map.getCenter().lng]);
+  const nom = async bounded => {
+    const j = await getJson('https://nominatim.openstreetmap.org/search?' + new URLSearchParams({ q, format: 'jsonv2', limit: 10, countrycodes: 'us', viewbox: VIEWBOX, bounded: bounded ? 1 : 0, addressdetails: 1 }), 10000);
+    return (Array.isArray(j) ? j : []).map(x => { const a = x.address || {};
+      const street = tidy([a.house_number, a.road].filter(Boolean).join(' ')), city = a.city || a.town || a.village || a.hamlet || a.suburb || a.county || '';
+      const name = x.name && x.name !== a.house_number ? x.name : '';
+      return { name, street, city, type: TYPE[x.type] || '', lat: +x.lat, lng: +x.lon }; });
+  };
+  const pho = async () => {
+    const j = await getJson('https://photon.komoot.io/api/?' + new URLSearchParams({ q, limit: 10, lat: ref[0], lon: ref[1], bbox: [AREA.w, AREA.s, AREA.e, AREA.n].join(',') }), 10000);
     return (j.features || []).map(f => { const p = f.properties, [ln, la] = f.geometry.coordinates;
-      const street = [p.housenumber, p.street].filter(Boolean).join(' ');
-      return { label: [p.name, street, p.city, p.state, p.postcode].filter(Boolean).join(', '), short: p.name || street || p.city, lat: la, lng: ln }; });
-  } catch (e) { return null; }
+      return { name: p.name || '', street: tidy([p.housenumber, p.street].filter(Boolean).join(' ')), city: p.city || p.town || p.district || p.county || '', type: TYPE[p.osm_value] || '', lat: la, lng: ln }; });
+  };
+  const [a, b] = await Promise.allSettled([nom(true), pho()]);
+  let hits = [...(a.value || []), ...(b.value || [])];
+  if (!hits.length && a.status === 'fulfilled') { try { hits = await nom(false); } catch (e) { } }   // nothing nearby: look wider
+  if (!hits.length && a.status === 'rejected' && b.status === 'rejected') return null;
+  const out = [];
+  for (const h of hits) {
+    if (!h.name && !h.street) continue;
+    h.d = E.hav(ref, [h.lat, h.lng]); h.far = !inArea(h.lat, h.lng);
+    const dup = out.find(o => E.hav([o.lat, o.lng], [h.lat, h.lng]) < 120 && (o.name || o.street).toLowerCase() === (h.name || h.street).toLowerCase());
+    if (dup) { dup.type = dup.type || h.type; dup.street = dup.street || h.street; dup.city = dup.city || h.city; continue; }
+    out.push(h);
+  }
+  out.sort((x, y) => (x.far - y.far) || (x.d - y.d));
+  return out.slice(0, 8).map(h => ({ ...h, short: h.name || h.street || h.city, label: [h.name, h.street, h.city].filter(Boolean).join(', ') }));
 }
 // opts: {title, nameLabel (omit to skip the name), mapPrompt, done(name, lat, lng, label)}
 function findPlace(opts) {
@@ -505,8 +525,8 @@ function findPlace(opts) {
   const box = document.createElement('div'); box.className = 'card findplace';
   box.innerHTML = `<div class="row" style="justify-content:space-between"><b>${esc(opts.title)}</b><button class="linkbtn" data-x aria-label="Close">Cancel</button></div>
     ${opts.nameLabel ? `<label class="f" for="fpName">${esc(opts.nameLabel)}</label><input type="text" id="fpName" maxlength="40">` : ''}
-    <label class="f" for="fpAddr">Address or place name</label>
-    <form class="row" data-f><input type="text" id="fpAddr" class="grow" autocomplete="street-address" placeholder="e.g. 1234 SE Main St, Portland"><button class="btn sm" type="submit">Search</button></form>
+    <label class="f" for="fpAddr">Address or place</label>
+    <form class="row" data-f><input type="text" id="fpAddr" class="grow" autocomplete="off" enterkeyhint="search" placeholder="Address, school, business or place"><button class="btn sm" type="submit">Search</button></form>
     <div data-res></div>
     <button class="linkbtn" data-map>Or tap the spot on the map</button>`;
   const pane = $('.pane.on'); pane.prepend(box); pane.scrollTop = 0; $('#sheet').classList.remove('min');
@@ -526,10 +546,10 @@ function findPlace(opts) {
     e.preventDefault(); const q = addrIn.value.trim(); if (q.length < 3) return;
     if (!navigator.onLine) { res.innerHTML = '<p class="hint">Address search needs a connection. Tap the map instead.</p>'; return; }
     res.innerHTML = '<p class="hint">Searching…</p>';
-    const hits = await geocode(/portland|oregon|\bor\b|wa\b|vancouver|\d{5}/i.test(q) ? q : q + ', Oregon');
+    const hits = await geocode(q);
     if (!hits) { res.innerHTML = '<p class="hint">Search isn\'t responding. Try again, or tap the map.</p>'; return; }
-    if (!hits.length) { res.innerHTML = '<p class="hint">No match. Add the city or ZIP code, or tap the map.</p>'; return; }
-    res.innerHTML = hits.map((h, i) => `<button class="member" style="grid-template-columns:1fr;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);cursor:pointer" data-i="${i}"><span>${esc(h.label)}</span></button>`).join('');
+    if (!hits.length) { res.innerHTML = '<p class="hint">No match. Try a fuller name, add the city, or tap the map.</p>'; return; }
+    res.innerHTML = hits.map((h, i) => `<button class="hit" data-i="${i}"><b>${esc(h.name || h.street)}</b><span class="meta">${esc([h.type, h.name ? h.street : '', h.city].filter(Boolean).join(' · '))}${h.far ? ' · outside the map area' : ' · ' + fmtKm(h.d)}</span></button>`).join('');
     res.onclick = ev => { const b = ev.target.closest('[data-i]'); if (!b) return; const h = hits[+b.dataset.i]; finish(h.lat, h.lng, h.label, h.short); };
   };
 }
@@ -694,5 +714,5 @@ addEventListener('online', () => { netPill(); syncPull(); syncPush(true); }); ad
 /* ---------- boot ---------- */
 netPill(); setGpsPill(); drawBridges(); drawBeecn(); renderMembers(); renderPlaces(); renderLayerList(); drawWui(); loadHazards(false); startSync();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
-window.P2S_APP = { S, plan, startPlan, planRoutes, fairestPoint, loadDemo, parseCheckins, useHazards }; // for testing
+window.P2S_APP = { S, geocode, plan, startPlan, planRoutes, fairestPoint, loadDemo, parseCheckins, useHazards }; // for testing
 }
