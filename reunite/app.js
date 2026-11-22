@@ -880,7 +880,7 @@ function routeSafety(o) {
       : `Crosses ${esc(nm)}, assumed open in a ${SEVERITY[v].label.toLowerCase()} quake. Older bridges can close for inspection after any felt quake; have another option ready.`); }
   for (const c of o.bad) n.push(`Crosses ${esc(c.bridge.name)}, which isn't expected to be usable after a major quake${c.bridge.note ? ' (' + esc(c.bridge.note) + ')' : ' (not seismically upgraded)'}. Confirm it's open before you set out, and have another option ready.`);
   const fw = [...new Set((o.steps || []).flatMap(s => String(s.ref || '').split(';')).map(x => x.trim()).filter(x => /^(I|US|OR|WA|SR)[ -]?\d/.test(x)))];
-  if (S.mode !== 'foot' && fw.length) n.push(`Uses ${esc(fw.slice(0, 4).join(', '))}: freeway bridges, overpasses and ramps may be closed for inspection after a major quake. Expect detours.`);
+  if (S.mode !== 'foot' && fw.length && scen().type === 'quake') n.push(`Uses ${esc(fw.slice(0, 4).join(', '))}: freeway bridges, overpasses and ramps may be closed for inspection after a major quake. Expect detours.`);
   if (o.kind === 'straight') n.push('No mapped path was found (offline, or every crossing is blocked). This is a compass bearing only. Stay put if travel looks unsafe, and send a check-in.');
   if (S.mode === 'foot' && o.dist > 15000) n.push(`That's a long walk (${fmtKm(o.dist)}). Plan water and rest stops, or check whether someone closer can go.`);
   if (o.kind.startsWith('corridor')) n.push('No street directions (offline or the routing service is down): these are compass headings along the safest line. Follow streets that stay close to it.');
