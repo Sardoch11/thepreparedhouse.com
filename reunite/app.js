@@ -30,10 +30,16 @@ const LAYERS = [
   { id: 'fire', type: 'points', name: 'Fire stations', src: 'Oregon State Fire Marshal',
     url: 'https://services.arcgis.com/uUvqNMGPm7axC2dD/arcgis/rest/services/OR_Fire_Stations/FeatureServer/0', where: '1=1', fields: 'Agency,Station,Physical_Address', page: 2000,
     swatch: ['#B43D1A'] },
-  { id: 'wui', type: 'image', name: 'Wildland-urban interface (wildfire)', src: 'Oregon Department of Forestry',
-    url: 'https://gis.odf.oregon.gov/ags1/rest/services/WebMercator/Fire/MapServer', layer: 6, swatch: ['#C2671B'], off: true }
+  { id: 'flood500', type: 'avoid', name: 'Flood zones (0.2% annual chance)', src: 'FEMA National Flood Hazard Layer', off: true,
+    url: 'https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28', where: "ZONE_SUBTY='0.2 PCT ANNUAL CHANCE FLOOD HAZARD'", fields: 'FLD_ZONE', page: 1000,
+    build: fc => E.fromGeoJSON(fc, null, { kind: 'flood5', cost: () => 4 }), swatch: ['#7FB2E5'],
+    style: () => ({ fillColor: '#7FB2E5', fillOpacity: 0.22 }) },
+  { id: 'wui', type: 'avoid', name: 'Wildland-urban interface (wildfire)', src: 'Oregon Department of Forestry', off: true,
+    url: 'https://gis.odf.oregon.gov/ags1/rest/services/WebMercator/Fire/MapServer/6', where: '1=1', fields: 'OBJECTID', page: 1000,
+    build: fc => E.fromGeoJSON(fc, null, { kind: 'wui', cost: () => 3 }), swatch: ['#C2671B'],
+    style: () => ({ fillColor: '#C2671B', fillOpacity: 0.2 }) }
 ];
-const KIND = { liq5: 'very high liquefaction', liq4: 'high liquefaction', slide: 'mapped landslide', flood: 'flood zone' };
+const KIND = { liq5: 'very high liquefaction', liq4: 'high liquefaction', slide: 'mapped landslide', flood: '100-year flood zone', flood5: '500-year flood zone', wui: 'wildland-urban interface near a fire', fire: 'active fire area', firebuf: 'fire buffer zone', mark: 'area you marked' };
 const COLORS = ['#2F6FB0', '#8A4FB5', '#C2671B', '#0F8B8D', '#B5337A', '#5A7D1E'];
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -95,39 +101,134 @@ function rebuildIndex() {
   const polys = []; PREF = [];
   for (const l of LAYERS) { const d = LD[l.id], st = S.layers[l.id];
     if (l.type === 'avoid' && d.polys && st.use) polys.push(...d.polys);
+    if (l.id === 'liq' && d.polys && !d.index) d.index = E.buildIndex(d.polys);
     if (l.type === 'prefer' && d.lines && st.use) PREF.push(...d.lines.map(x => x.ll)); }
-  H = polys.length ? E.buildIndex(polys) : null;
-  if (typeof lyBr !== 'undefined' && $('#sevDesc')) { drawBridges(); renderSev(); }   // medium-severity closures depend on the liquefaction layer
+  const fires = typeof FIRES !== 'undefined' ? fireSources() : [], out = [];
+  for (const p of polys) { const c = scenCost(p, fires); if (c > 1.01) out.push(c === p.cost ? p : { ...p, cost: c }); }
+  if (typeof FIRES !== 'undefined') out.push(...scenPolys());
+  H = out.length ? E.buildIndex(out) : null;
+  if (typeof lyBr !== 'undefined' && $('#sevDesc')) { drawBridges(); renderScen(); }   // medium-severity closures depend on the liquefaction layer
 }
 /* wildfire WUI: drawn by the map server as an image for the current view */
 let wuiImg = null;
 function drawWui() {
-  const l = LAYERS.find(x => x.id === 'wui'); if (wuiImg) { map.removeLayer(wuiImg); wuiImg = null; }
+  const l = LAYERS.find(x => x.id === 'wui' && x.type === 'image'); if (!l) return; if (wuiImg) { map.removeLayer(wuiImg); wuiImg = null; }
   if (!S.layers.wui.show) return;
   const b = map.getBounds(), sz = map.getSize(), sw = map.options.crs.project(b.getSouthWest()), ne = map.options.crs.project(b.getNorthEast());
   const u = `${l.url}/export?` + new URLSearchParams({ bbox: [sw.x, sw.y, ne.x, ne.y].join(','), bboxSR: 3857, imageSR: 3857, size: `${sz.x},${sz.y}`, format: 'png32', transparent: true, layers: 'show:' + l.layer, f: 'image' });
   wuiImg = L.imageOverlay(u, b, { opacity: 0.45, interactive: false }).addTo(map);
 }
 map.on('moveend', drawWui);
-/* ---------- quake severity: which bridges are assumed closed, how much hazard ground matters ---------- */
-const SEVERITY = {
-  mild: { label: 'Mild', scale: .25, desc: 'Like the 1993 Scotts Mills quake (M5.6): mostly light damage. Bridges are assumed open, but any of them may close briefly for inspection.' },
-  medium: { label: 'Medium', scale: .6, desc: 'A strong local quake. Older bridges whose land approaches are mostly (80% or more) very high liquefaction ground on the hazard map are assumed closed; other bridges open with caution.' },
-  major: { label: 'Major', scale: 1, desc: "Like DOGAMI's Portland Hills fault M6.8 scenario. Bridges not built or upgraded for earthquakes are assumed closed; quake-ready bridges are assumed to reopen first." },
-  severe: { label: 'Severe', scale: 1.4, desc: 'A Cascadia Subduction Zone M9. Older bridges are assumed closed and damage is widespread; quake-ready bridges are assumed to reopen first, after inspection.' }
+/* ---------- emergency scenario: type (earthquake, wildfire, flood) then severity ---------- */
+const SCEN = {
+  quake: { label: 'Earthquake', ask: 'How strong is the quake?', def: 'major', levels: {
+    mild: { label: 'Mild', scale: .25, desc: 'Like the 1993 Scotts Mills quake (M5.6): mostly light damage. Bridges are assumed open, but any of them may close briefly for inspection.' },
+    medium: { label: 'Medium', scale: .6, desc: 'A strong local quake. Older bridges whose land approaches are mostly (80% or more) very high liquefaction ground on the hazard map are assumed closed; other bridges open with caution.' },
+    major: { label: 'Major', scale: 1, desc: "Like DOGAMI's Portland Hills fault M6.8 scenario. Bridges not built or upgraded for earthquakes are assumed closed; quake-ready bridges are assumed to reopen first." },
+    severe: { label: 'Severe', scale: 1.4, desc: 'A Cascadia Subduction Zone M9. Older bridges are assumed closed and damage is widespread; quake-ready bridges are assumed to reopen first, after inspection.' } } },
+  fire: { label: 'Wildfire', ask: "What's the evacuation level? (Oregon: Be Ready, Be Set, Go Now)", def: 'l2', levels: {
+    l1: { label: 'Level 1 · Be Ready', short: 'Level 1', desc: 'Level 1, Be Ready: danger in the area. Routes avoid active fire areas and stay 1 km clear of them where they can.' },
+    l2: { label: 'Level 2 · Be Set', short: 'Level 2', desc: "Level 2, Be Set: significant danger; be ready to leave at a moment's notice. Routes stay 3 km clear of fire areas and avoid wildland-urban interface near fires." },
+    l3: { label: 'Level 3 · Go Now', short: 'Level 3', desc: 'Level 3, Go Now: leave immediately. Routes stay 6 km clear of fire areas wherever possible and steer through developed areas, away from wildland edges.' } } },
+  flood: { label: 'Flood', ask: 'How bad is the flooding? (National Weather Service flood category)', def: 'moderate', levels: {
+    minor: { label: 'Minor', desc: 'NWS minor flooding: nuisance flooding with little or no property damage. Routes steer lightly around FEMA flood zones and hard around floodways.' },
+    moderate: { label: 'Moderate', desc: 'NWS moderate flooding: water reaches the lowest homes and roads along rivers and creeks. Routes avoid FEMA 100-year flood zones.' },
+    major: { label: 'Major', desc: 'NWS major flooding: significant flooding of riverside buildings and roads. Routes treat 100-year flood zones as blocked, avoid 500-year zones, and keep clear of landslide ground (saturated slopes slide).' } } }
 };
-const sev = () => SEVERITY[S.severity] ? S.severity : (S.severity = 'major');
+const FIREBUF = { l1: [1000, 4, 150], l2: [3000, 12, 300], l3: [6000, 40, 500] };   // buffer m, buffer cost, fire-area cost
+function scen() {
+  let s = S.scen;
+  if (!s || !SCEN[s.type]) s = S.scen = { type: 'quake', level: SCEN.quake.levels[S.severity] ? S.severity : 'major' };
+  if (!SCEN[s.type].levels[s.level]) s.level = SCEN[s.type].def;
+  return s;
+}
+const scenLabel = () => { const s = scen(); return SCEN[s.type].label + ': ' + SCEN[s.type].levels[s.level].label; };
+const sev = () => scen().type === 'quake' ? scen().level : null;   // earthquake level, or null in other scenarios
+const SEVERITY = SCEN.quake.levels;
+
+// live wildfire perimeters (National Interagency Fire Center, WFIGS current perimeters)
+const WFIGS = 'https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters_Current/FeatureServer/0';
+let FIRES = { when: 0, feats: [], err: '' };
+async function loadFires(force) {
+  if (!force) { try { const c = await idb.get('fires'); if (c && Date.now() - c.when < 30 * 60000) { FIRES = c; afterFires(); return; } if (c) FIRES = c; } catch (e) { } }
+  if (!navigator.onLine) { FIRES.err = FIRES.when ? '' : 'offline'; afterFires(); return; }
+  try {
+    const u = WFIGS + '/query?' + new URLSearchParams({ where: 'attr_PercentContained IS NULL OR attr_PercentContained < 100', geometry: '-124.2,44.4,-120.8,46.6', geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects', outFields: 'poly_IncidentName,poly_GISAcres,attr_PercentContained,poly_DateCurrent', outSR: 4326, maxAllowableOffset: 0.0005, f: 'geojson' });
+    const j = await (await fetch(u)).json();
+    FIRES = { when: Date.now(), feats: (j.features || []).filter(f => f.geometry), err: '' };
+    try { await idb.set('fires', FIRES); } catch (e) { }
+  } catch (e) { FIRES.err = 'not reachable'; }
+  afterFires();
+}
+function afterFires() { drawFires(); rebuildIndex(); renderScen(); }
+const lyFire = L.layerGroup().addTo(map);
+function drawFires() {
+  lyFire.clearLayers();
+  for (const f of FIRES.feats) {
+    const p = f.properties || {}, polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
+    for (const rings of polys) L.polygon(rings.map(r => r.map(([x, y]) => [y, x])), { color: '#B43D1A', weight: 2, fillColor: '#E4572E', fillOpacity: .35 })
+      .bindPopup(`<b>${esc(p.poly_IncidentName || 'Wildfire')}</b><br>${p.poly_GISAcres ? Math.round(p.poly_GISAcres).toLocaleString() + ' acres · ' : ''}${p.attr_PercentContained != null ? p.attr_PercentContained + '% contained' : 'containment not reported'}<br><small>NIFC perimeter, updated ${p.poly_DateCurrent ? new Date(p.poly_DateCurrent).toLocaleString() : 'unknown'}</small>`).addTo(lyFire);
+  }
+  for (const m of S.marks || []) {
+    const col = { fire: '#B43D1A', flood: '#2F6FB0', damage: '#5B6770' }[m.type];
+    L.circle([m.lat, m.lng], { radius: m.r, color: col, weight: 2, dashArray: '6 6', fillColor: col, fillOpacity: .18 }).bindPopup(`<b>${esc(MARKT[m.type])}</b> you marked<br><small>${new Date(m.ts).toLocaleString()}</small>`).addTo(lyFire);
+  }
+}
+// hazard polygons for fire areas, buffers and areas people mark
+const MARKT = { fire: 'Fire', flood: 'Flooding', damage: 'Damage or closure' };
+function circlePoly(lat, lng, r, kind, cost) {
+  const ring = [], kx = 111320 * Math.cos(lat * Math.PI / 180), ky = 110540;
+  for (let k = 0; k <= 24; k++) { const a = k / 24 * 2 * Math.PI; ring.push([lng + r * Math.sin(a) / kx, lat + r * Math.cos(a) / ky]); }
+  return { cls: 0, kind, cost, rings: [ring], bb: [lng - r / kx, lat - r / ky, lng + r / kx, lat + r / ky] };
+}
+function fireSources() {
+  const out = [];
+  for (const f of FIRES.feats) {
+    const polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
+    for (const rings of polys) { const pts = rings[0]; let la = 0, ln = 0; pts.forEach(([x, y]) => { ln += x; la += y; }); la /= pts.length; ln /= pts.length;
+      out.push({ lat: la, lng: ln, r: Math.max(...pts.map(([x, y]) => E.hav([la, ln], [y, x]))), rings }); }
+  }
+  for (const m of S.marks || []) if (m.type === 'fire') out.push({ lat: m.lat, lng: m.lng, r: m.r });
+  return out;
+}
+function scenPolys() {
+  const s = scen(), out = [], lv = s.type === 'fire' ? FIREBUF[s.level] : [1000, 4, 60];
+  for (const f of fireSources()) {
+    if (f.rings) { let w = 180, so = 90, e = -180, n = -90; for (const [x, y] of f.rings[0]) { w = Math.min(w, x); e = Math.max(e, x); so = Math.min(so, y); n = Math.max(n, y); } out.push({ cls: 0, kind: 'fire', cost: lv[2], rings: f.rings, bb: [w, so, e, n] }); }
+    else out.push(circlePoly(f.lat, f.lng, f.r, 'fire', lv[2]));
+    out.push(circlePoly(f.lat, f.lng, f.r + lv[0], 'firebuf', lv[1]));
+  }
+  for (const m of S.marks || []) if (m.type !== 'fire') out.push(circlePoly(m.lat, m.lng, m.r, 'mark', m.type === 'flood' && s.type === 'flood' ? ({ minor: 20, moderate: 60, major: 120 })[s.level] : 60));
+  return out;
+}
+// how much each mapped hazard counts in the current scenario (0 = ignore)
+function scenCost(p, fires) {
+  const s = scen(), k = p.kind;
+  if (s.type === 'quake') { if (k === 'flood5' || k === 'wui') return 0; return 1 + (p.cost - 1) * SCEN.quake.levels[s.level].scale; }
+  if (s.type === 'flood') {
+    if (k === 'liq5' || k === 'liq4' || k === 'wui') return 0;
+    if (k === 'flood') return s.level === 'minor' ? (p.cost >= 20 ? 10 : 2.5) : s.level === 'moderate' ? p.cost : (p.cost >= 20 ? 120 : 60);
+    if (k === 'flood5') return s.level === 'major' ? 6 : s.level === 'moderate' ? 1.5 : 0;
+    if (k === 'slide') return s.level === 'major' ? 18 : s.level === 'moderate' ? 12 : 6;
+  }
+  if (s.type === 'fire') {
+    if (k !== 'wui' || !fires.length) return 0;
+    const cx = (p.bb[0] + p.bb[2]) / 2, cy = (p.bb[1] + p.bb[3]) / 2;
+    return fires.some(f => E.hav([cy, cx], [f.lat, f.lng]) < f.r + 15000) ? ({ l1: 1.5, l2: 4, l3: 8 })[s.level] : 0;
+  }
+  return p.cost;
+}
 let riskMemo = { H: null, m: {} };
 // Liquefaction at a bridge's approaches: sample rings 250 m and 500 m around the bridge point
 function approachRisk(b) {
-  if (!H) return null;
-  if (riskMemo.H !== H) riskMemo = { H, m: {} };
+  const RH = LD.liq && LD.liq.index; if (!RH) return null;
+  if (riskMemo.H !== RH) riskMemo = { H: RH, m: {} };
   if (riskMemo.m[b.id]) return riskMemo.m[b.id];
   let liq5 = 0, n = 0;
   for (const r of [200, 350, 500]) for (let k = 0; k < 12; k++) {
     const a = k * Math.PI / 6, la = b.lat + r * Math.cos(a) / 110540, ln = b.lng + r * Math.sin(a) / (111320 * Math.cos(b.lat * Math.PI / 180));
     if (nearRiver(la, ln)) continue;   // count land approaches only, not the river itself
-    const h = E.hazardAt(H, la, ln); n++; if (h && h.kind === 'liq5') liq5++;
+    const h = E.hazardAt(RH, la, ln); n++; if (h && h.kind === 'liq5') liq5++;
   }
   return (riskMemo.m[b.id] = { liq5, n, share: n ? liq5 / n : 0 });
 }
@@ -149,20 +250,54 @@ function sevOverrides() {
   }
   return o;
 }
-const effOv = () => ({ ...sevOverrides(), ...S.overrides });
+const allOpen = () => Object.fromEntries(DATA.bridges.map(b => [b.id, 'open']));
+const effOv = () => scen().type === 'quake' ? { ...sevOverrides(), ...S.overrides } : { ...allOpen(), ...S.overrides };
 function bridgeReason(b) {
   if (S.overrides[b.id]) return 'Field report: marked ' + S.overrides[b.id];
+  if (scen().type !== 'quake') return scen().type === 'flood' ? 'Open in a flood scenario: watch for flooded approaches and underpasses' : 'Open in a wildfire scenario';
   if (b.quake === 'resilient') return 'Built or upgraded for earthquakes: assumed among the first to reopen';
   const v = sev(); if (v === 'mild') return 'Assumed open in a mild quake (may close briefly for inspection)';
   if (v === 'medium') { const r = approachRisk(b); return r ? (r.n >= 4 && r.share >= .8 ? `Assumed closed: ${Math.round(r.share * 100)}% of its land approaches are very high liquefaction ground` : `Assumed open with caution: ${Math.round(r.share * 100)}% of its land approaches are very high liquefaction ground`) : 'Load hazard layers to assess approaches'; }
   return `Assumed closed in a ${SEVERITY[v].label.toLowerCase()} quake (not seismically upgraded)`;
 }
-function renderSev() {
-  const v = sev(), ov = effOv(), closed = DATA.bridges.filter(b => !E.bridgeOpen(b, 'car', ov) && b.modes.car || (!b.modes.car && !E.bridgeOpen(b, 'foot', ov))).length;
-  $$('#sevSeg button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === v));
-  $('#sevDesc').textContent = SEVERITY[v].desc + ` ${closed} of ${DATA.bridges.length} river crossings assumed closed.`;
+function renderScen() {
+  const s = scen(), T = SCEN[s.type], ov = effOv(); if (!$('#sevDesc')) return;
+  $$('#scenType button').forEach(b => b.setAttribute('aria-pressed', b.dataset.t === s.type));
+  $('#sevAsk').textContent = T.ask;
+  $('#sevSeg').innerHTML = Object.entries(T.levels).map(([k, v]) => `<button data-v="${k}" aria-pressed="${k === s.level}">${esc(v.short || v.label)}</button>`).join('');
+  let extra = '';
+  if (s.type === 'quake') { const closed = DATA.bridges.filter(b => b.modes.car ? !E.bridgeOpen(b, 'car', ov) : !E.bridgeOpen(b, 'foot', ov)).length; extra = ` ${closed} of ${DATA.bridges.length} river crossings assumed closed.`; }
+  $('#sevDesc').textContent = T.levels[s.level].desc + extra;
+  const marks = (S.marks || []), mk = s.type === 'fire' ? 'fire' : s.type === 'flood' ? 'flood' : 'damage';
+  const near = FIRES.feats.length, fireLine = s.type !== 'fire' ? '' : FIRES.err === 'offline' && !FIRES.when ? '<p class="meta">Live fire perimeters need a connection. Mark the fire yourself if you know where it is.</p>'
+    : `<p class="meta">${FIRES.when ? (near ? `<b>${near} active fire perimeter${near > 1 ? 's' : ''}</b> within about 150 km (National Interagency Fire Center), checked ${new Date(FIRES.when).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.` : 'No active fire perimeters within about 150 km (National Interagency Fire Center), checked ' + new Date(FIRES.when).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + '. New fires may not be mapped yet.') : 'Checking live fire perimeters…'} <button class="linkbtn" data-fires>Refresh</button></p>`;
+  $('#scenExtra').innerHTML = fireLine + `<div class="row" style="margin-top:6px;flex-wrap:wrap"><button class="btn ghost sm" data-mark="${mk}">Mark ${mk === 'damage' ? 'damage or a closure' : mk === 'fire' ? 'a fire' : 'flooding'}</button>${s.type !== 'quake' ? `<button class="btn ghost sm" data-mark="damage">Mark a closure</button>` : ''}${marks.length ? `<button class="linkbtn" data-clearmarks>Clear ${marks.length} mark${marks.length > 1 ? 's' : ''}</button>` : ''}</div>`;
 }
-function env() { return { H, prefer: PREF, rivers: DATA.rivers, bridges: DATA.bridges, overrides: effOv(), mode: S.mode, hzScale: SEVERITY[sev()].scale }; }
+const renderSev = renderScen;
+function addMark(type) {
+  pick(`Tap where the ${type === 'fire' ? 'fire is' : type === 'flood' ? 'flooding is' : 'damage or closure is'}`, (la, ln) => {
+    const box = formCard('Mark ' + MARKT[type].toLowerCase(), `<label class="f">How big an area?</label><div class="seg" id="mkR"><button data-v="250" aria-pressed="${type === 'damage'}">Small (250 m)</button><button data-v="1000" aria-pressed="${type !== 'damage'}">Medium (1 km)</button><button data-v="3000" aria-pressed="false">Large (3 km)</button></div>
+      <p class="hint">Routes will avoid this area. Marks stay on this phone until you clear them.</p>`, b => {
+      const r = +(b.querySelector('#mkR [aria-pressed=true]') || { dataset: { v: 1000 } }).dataset.v;
+      (S.marks = S.marks || []).push({ id: uid(), type, lat: la, lng: ln, r, ts: Date.now() }); save(); drawFires(); rebuildIndex(); renderScen(); if (lastPlan.cards.length) planRoutes(); toast(MARKT[type] + ' marked. Routes now avoid it.');
+    });
+    box.querySelector('#mkR').onclick = e => { const x = e.target.closest('[data-v]'); if (x) box.querySelectorAll('#mkR button').forEach(y => y.setAttribute('aria-pressed', y === x)); };
+  });
+}
+function setScen(type, level) {
+  const s = scen(); s.type = type; s.level = level && SCEN[type].levels[level] ? level : (type === s.type && SCEN[type].levels[s.level] ? s.level : SCEN[type].def);
+  save(); rebuildIndex(); drawBridges(); renderScen(); showScenLayers();
+  if (type === 'fire' && Date.now() - FIRES.when > 30 * 60000) loadFires();
+  if (lastPlan.cards.length) planRoutes();
+}
+// show the map layers that matter for this kind of emergency
+function showScenLayers() {
+  const t = scen().type, want = { quake: ['liq', 'slide', 'etr'], fire: ['wui', 'etr'], flood: ['flood', 'flood500', 'slide', 'etr'] }[t];
+  for (const l of LAYERS) { if (l.type !== 'avoid' && l.type !== 'prefer') continue; const st = S.layers[l.id], on = want.includes(l.id);
+    if (st.show !== on) { st.show = on; if (LD[l.id].group) on ? map.addLayer(LD[l.id].group) : map.removeLayer(LD[l.id].group); } }
+  save(); renderLayerList();
+}
+function env() { return { H, prefer: PREF, rivers: DATA.rivers, bridges: DATA.bridges, overrides: effOv(), mode: S.mode, hzScale: 1 }; }   // scenario weights are applied when the hazard index is built
 
 function drawBridges() {
   lyBr.clearLayers();
@@ -704,20 +839,41 @@ async function routeLeg(target, travelers, en, label) {
 
 /* ---------- safety notices ---------- */
 function generalSafety() {
-  const m = S.mode, items = [
-    'Expect aftershocks. If shaking starts: Drop, Cover and Hold On.' + (m === 'car' ? ' In a car, pull over in a clear spot away from buildings, trees, overpasses and power lines.' : ''),
-    "Don't enter damaged buildings. Stay well clear of downed power lines and anything touching them.",
-    'Never walk or drive into floodwater: 6 inches of moving water can knock you off your feet, and 12 inches can carry away a car.',
-    m === 'car' ? "Bridges and overpasses can be damaged even when they look fine. Stop if you see cracks, gaps, sagging or a drop at the joints, and expect closures and detours." : 'Wear sturdy, thick-soled shoes and gloves, and carry water, a flashlight and a whistle.',
-    'Text rather than call; save calls for emergencies. Send a check-in when you leave and when you arrive.'];
-  return `<details class="safety"><summary><b>Safety before you go</b></summary><ul>${items.map(t => `<li>${t}</li>`).join('')}</ul><p class="src">Sources: National Weather Service (Turn Around Don't Drown), Ready.gov earthquake guidance.</p></details>`;
+  const m = S.mode, t = scen().type, text = 'Text rather than call; save calls for emergencies. Send a check-in when you leave and when you arrive.';
+  const sets = {
+    quake: [['Expect aftershocks. If shaking starts: Drop, Cover and Hold On.' + (m === 'car' ? ' In a car, pull over in a clear spot away from buildings, trees, overpasses and power lines.' : ''),
+      "Don't enter damaged buildings. Stay well clear of downed power lines and anything touching them.",
+      'Never walk or drive into floodwater: 6 inches of moving water can knock you off your feet, and 12 inches can carry away a car.',
+      m === 'car' ? 'Bridges and overpasses can be damaged even when they look fine. Stop if you see cracks, gaps, sagging or a drop at the joints, and expect closures and detours.' : 'Wear sturdy, thick-soled shoes and gloves, and carry water, a flashlight and a whistle.', text],
+      "National Weather Service (Turn Around Don't Drown), Ready.gov earthquake guidance"],
+    fire: [['Follow evacuation notices from your county or sheriff: Level 1 Be Ready, Level 2 Be Set, Level 3 Go Now. Leave whenever you feel unsafe; you may not get a Level 1 or 2 notice first.',
+      'Sign up for your county\'s alerts at ORAlert.gov, and check TripCheck for road closures. Officials may close roads or set evacuation routes this map can\'t show.',
+      'Fire perimeters can be hours old and fire can move faster than the map. If you see flames or heavy smoke ahead, turn around.',
+      m === 'foot' ? 'Smoke: an N95 mask helps; keep children and anyone with breathing problems out of smoke where you can.' : 'Drive with headlights on and windows and vents closed. Leave as fast as you safely can, and watch for people and animals on the road.',
+      'Tell loved ones where you are going. ' + text],
+      'Oregon Department of Emergency Management (Be Ready, Be Set, Go Now), National Interagency Fire Center perimeters'],
+    flood: [["Turn Around Don't Drown: 6 inches of moving water can knock you off your feet, and 12 inches can carry away a car. You can't tell how deep water is, or whether the road under it is gone.",
+      'Avoid underpasses, low crossings and creek edges. Stay out of water that may have electricity in it.',
+      'Heavy rain loosens slopes: watch for landslides and debris on hillside roads, and keep away from fresh cracks or tilted trees.',
+      'Check TripCheck and your county\'s alerts (ORAlert.gov) for closed roads before you go.', text],
+      'National Weather Service flood safety, Oregon Department of Emergency Management']
+  }, [items, src] = sets[t];
+  return `<details class="safety"><summary><b>Safety before you go</b></summary><ul>${items.map(x => `<li>${x}</li>`).join('')}</ul><p class="src">Sources: ${src}.</p></details>`;
 }
 function routeSafety(o) {
   const n = [], by = o.ex.by;
   if ((by.liq5 || 0) + (by.liq4 || 0) >= 100) n.push(`Crosses ${fmtKm((by.liq5 || 0) + (by.liq4 || 0))} of liquefaction-prone ground: expect cracked or buckled pavement, sinkholes, broken water mains and standing water. Go slowly and test the ground.`);
   if ((by.slide || 0) >= 50) n.push(`Passes ${fmtKm(by.slide)} of mapped landslide ground: watch the slope above and below you, especially after rain. Turn back if you see fresh cracks, tilted trees or moving debris.`);
+  if ((by.fire || 0) >= 1) n.push(`<b>Passes through ${fmtKm(by.fire)} of an active fire area.</b> No route avoided it. Don't go unless officials say the road is open; choose another destination if you can.`);
+  if ((by.firebuf || 0) >= 50) n.push(`Passes within the safety buffer of a fire for ${fmtKm(by.firebuf)}. Check that the road is open, keep headlights on, and turn around if you see flames or heavy smoke.`);
+  if ((by.wui || 0) >= 200) n.push(`Runs ${fmtKm(by.wui)} through wildland-urban interface near a fire, where homes meet forest and fire spreads fastest.`);
+  if ((by.mark || 0) >= 1) n.push(`Passes through ${fmtKm(by.mark)} of an area you marked. No route avoided it; confirm it's passable before you go.`);
+  if ((by.flood5 || 0) >= 100) n.push(`Runs ${fmtKm(by.flood5)} through 500-year flood zones, which can flood in a major flood.`);
   if ((by.flood || 0) >= 50) n.push(`Runs ${fmtKm(by.flood)} through a flood zone. If water covers the road or path, turn around.`);
-  const v = sev();
+  const v = sev(), st = scen();
+  if (st.type !== 'quake') {
+    for (const nm of o.used) n.push(st.type === 'flood' ? `Crosses ${esc(nm)}. Bridge decks usually sit above floodwater, but approaches and underpasses near rivers can flood; check TripCheck before you go.` : `Crosses ${esc(nm)}.`);
+  } else
   for (const nm of o.used) { const b = DATA.bridges.find(x => x.name === nm); if (!b) continue;
     n.push(b.quake === 'resilient' ? `Assumes ${esc(nm)} is among the first bridges to reopen (built or upgraded for earthquakes)${v === 'major' || v === 'severe' ? '. It still needs inspection and may stay closed for hours or longer' : ''}. Check for closures and visible damage before you cross.`
       : S.overrides[b.id] === 'open' ? `Crosses ${esc(nm)}, which you marked open. Check for closures and visible damage before you cross.`
@@ -771,7 +927,7 @@ function drawPlan() {
 }
 function renderPlanResults() {
   const n = lastPlan.cards.length;
-  $('#routes').innerHTML = `<div class="planhead"><b>${esc(lastPlan.title)}</b><button class="linkbtn" data-editplan>Change plan</button></div>` + `<div class="notify"><b>Scenario: ${SEVERITY[sev()].label} quake.</b> ${esc(SEVERITY[sev()].desc)} These are planning assumptions from hazard maps and bridge status, not a forecast. Real closures depend on inspections, so follow official alerts.</div>` + lastPlan.head + generalSafety() + lastPlan.cards.map(routeCard).join('') + (lastPlan.foot || '')
+  $('#routes').innerHTML = `<div class="planhead"><b>${esc(lastPlan.title)}</b><button class="linkbtn" data-editplan>Change plan</button></div>` + `<div class="notify"><b>Scenario: ${esc(scenLabel())}.</b> ${esc(SCEN[scen().type].levels[scen().level].desc)} ${({ quake: 'These are planning assumptions from hazard maps and bridge status, not a forecast. Real closures depend on inspections, so follow official alerts.', fire: 'Fire areas come from live NIFC perimeters and fires you marked; perimeters can be hours old and buffers are the app\'s assumptions. Follow evacuation orders and official routes first.', flood: 'Flood areas come from FEMA flood maps and places you marked. Real flooding depends on rain and river levels, so follow NWS warnings and road closures.' })[scen().type]}</div>` + lastPlan.head + generalSafety() + lastPlan.cards.map(routeCard).join('') + (lastPlan.foot || '')
     + `<p class="src">Expect debris, downed lines and closures the data can't show. Walking is usually the most reliable way to move after a big quake.${navigator.onLine ? '' : ' Offline: showing compass-heading lines only.'}</p><div class="hr"></div>`;
   drawPlan();
 }
@@ -801,6 +957,8 @@ async function planRoutes() {
     const th = thenTarget();
     if (th && E.hav([th.lat, th.lng], [target.lat, target.lng]) > 80) leg2 = await routeLeg(th, [{ id: 'leg2', lat: target.lat, lng: target.lng, status: 'ok', legCol: '#5B6770' }], en, `Then ${esc(target.name)} → ${esc(th.name)}${kids.length ? ' with ' + esc(kids.join(', ')) : ''}`);
   }
+  const inHz = H && E.hazardAt(H, target.lat, target.lng);
+  if (inHz && inHz.cost >= 8) head = `<div class="warn" style="margin-top:8px"><b>${esc(target.name)} is inside ${/^[aeiou]/i.test(KIND[inHz.kind] || 'a') ? 'an' : 'a'} ${esc(KIND[inHz.kind] || 'hazard area')}.</b> ${g === 'meet' ? 'Consider a meeting point outside it.' : 'Check that it is safe to go there.'}${g === 'meet' ? ' <button class="linkbtn" data-fair>Suggest a safer point</button>' : ''}</div>` + head;
   // Messages to the families involved and to out-of-area contacts
   const mine = results.find(r => r.p === S.me) || results[0], eta = mine && mine.opts ? fmtMin(mine.opts[0].dur) : '', meN = S.me.name || 'Your family member';
   const recips = g => Object.values(S.members).filter(m => groupOf(m).id === g.id && !pl.kids.includes(m.id) && (m.tel || m.email) && !(target.person && m.id === target.person.id));
@@ -1064,9 +1222,16 @@ $('#pickMeet').onclick = () => findPlace({ title: 'Choose a meeting point', name
 $('#fairBtn').onclick = fairestPoint;
 $$('#modeSeg button').forEach(b => { b.setAttribute('aria-pressed', b.dataset.m === S.mode); b.onclick = () => { S.mode = b.dataset.m; save(); $$('#modeSeg button').forEach(x => x.setAttribute('aria-pressed', x === b)); drawBridges(); }; });
 $('#planBtn').onclick = planRoutes;
-$$('#sevSeg button').forEach(b => b.onclick = () => { S.severity = b.dataset.v; save(); renderSev(); drawBridges(); if (lastPlan.cards.length) planRoutes(); });
+$('#scenType').onclick = e => { const b = e.target.closest('[data-t]'); if (b) setScen(b.dataset.t); };
+$('#sevSeg').onclick = e => { const b = e.target.closest('[data-v]'); if (b) setScen(scen().type, b.dataset.v); };
+$('#scenExtra').onclick = e => {
+  const m = e.target.closest('[data-mark]'); if (m) return addMark(m.dataset.mark);
+  if (e.target.closest('[data-fires]')) return loadFires(true);
+  if (e.target.closest('[data-clearmarks]')) { S.marks = []; save(); drawFires(); rebuildIndex(); renderScen(); if (lastPlan.cards.length) planRoutes(); }
+};
 $('#routes').onclick = e => {
   const o = e.target.closest('[data-opt]'); if (o) { const [ri, oi] = o.dataset.opt.split(':').map(Number); lastPlan.cards[ri].sel = oi; lastPlan.focus = ri; renderPlanResults(); return; }
+  if (e.target.closest('[data-fair]')) { fairestPoint(); return; }
   if (e.target.closest('[data-editplan]')) { $('#goalSeg').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
   const c = e.target.closest('[data-card]'); if (c && !e.target.closest('a,button,summary,details') && +c.dataset.card !== lastPlan.focus) { lastPlan.focus = +c.dataset.card; drawPlan(); }
 };
@@ -1118,7 +1283,7 @@ const netPill = () => { const p = $('#pNet'); p.className = 'pill ' + (navigator
 addEventListener('online', () => { netPill(); syncPull(); syncPush(true); }); addEventListener('offline', netPill);
 
 /* ---------- boot ---------- */
-netPill(); setGpsPill(); drawBridges(); drawBeecn(); renderMembers(); renderPlaces(); renderLayerList(); drawWui(); loadHazards(false); startSync(); renderReg(); sendReg(); renderSev();
+netPill(); setGpsPill(); drawBridges(); drawBeecn(); renderMembers(); renderPlaces(); renderLayerList(); drawWui(); loadHazards(false); startSync(); renderReg(); sendReg(); drawFires(); renderScen(); if (scen().type === 'fire') loadFires();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
-window.P2S_APP = { get H() { return H; }, approachRisk, S, sendReg, regForm, geocode, plan, startPlan, planRoutes, fairestPoint, loadDemo, parseCheckins, useHazards }; // for testing
+window.P2S_APP = { setScen, scen, loadFires, get FIRES() { return FIRES; }, get H() { return H; }, approachRisk, S, sendReg, regForm, geocode, plan, startPlan, planRoutes, fairestPoint, loadDemo, parseCheckins, useHazards }; // for testing
 }

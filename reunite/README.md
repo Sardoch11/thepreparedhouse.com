@@ -112,3 +112,14 @@ Sellwood, Tilikum and Abernethy (built or upgraded for earthquakes) are assumed 
 
 ## Family registration
 A "Register your family" card (Family screen) and "Your registration" (Setup) collect name, email, mobile, home address (all required), household size, whether children are in school or child care, and an unticked-by-default consent to be contacted about services. The form also asks whether to save the address as Home and where the family should reunite (at home, somewhere else, not now); the app geocodes the address, saves Home, and sets the reunite location. Registrations post to the Google Form "Path2Safe family registration" in paul@sardoch.com (responses in the Google Sheet "Path2Safe family registrations"). They queue on the phone when offline and send when back online. Edits resend with the same Registration ID.
+
+## Emergency type, then severity (Reunite screen)
+"What kind of emergency?" (Earthquake / Wildfire / Flood), then a severity scale that matches it:
+| Type | Severity scale | What changes in routing |
+| --- | --- | --- |
+| Earthquake | Mild / Medium / Major / Severe (see Quake severity) | Liquefaction, landslide and flood ground scaled by level; older bridges closed by level; quake-ready bridges reopen first |
+| Wildfire | Oregon evacuation levels: Level 1 Be Ready / Level 2 Be Set / Level 3 Go Now | Live NIFC fire perimeters (fires under 100% contained within about 150 km) and fires you mark become no-go areas, with a buffer of 1 km / 3 km / 6 km; wildland-urban interface (ODF) within 15 km of a fire is avoided at Levels 2 and 3. All bridges open |
+| Flood | NWS flood categories: Minor / Moderate / Major | FEMA 100-year zones (light, avoid, blocked) and floodways; 500-year zones avoided in Major; landslide ground weighted up in Moderate and Major (saturated slopes). All bridges open |
+- "Mark a fire", "Mark flooding", "Mark damage or a closure": tap the map, choose small (250 m), medium (1 km) or large (3 km). Routes avoid marked areas in every scenario; marks stay on the phone until cleared.
+- The map shows the layers that matter for the type (liquefaction for quakes, wildland-urban interface for fires, 100- and 500-year flood zones for floods).
+- Results open with the scenario banner, the safety panel for that type (Oregon OEM evacuation guidance, ORAlert.gov and TripCheck for fires; NWS Turn Around Don't Drown, underpasses and landslides for floods), and per-route notes for fire areas, fire buffers, interface, 500-year zones and marked areas. If the destination sits inside a hazard area, the app says so and offers a safer meeting point.

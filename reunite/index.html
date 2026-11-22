@@ -202,9 +202,13 @@ details summary{cursor:pointer;min-height:32px}
 
   <section class="pane" id="t-reunite">
     <div id="routes"></div>
-    <label class="f" style="margin-top:0">How strong is the quake?</label>
-    <div class="seg" id="sevSeg" role="group" aria-label="Quake severity"><button data-v="mild">Mild</button><button data-v="medium">Medium</button><button data-v="major">Major</button><button data-v="severe">Severe</button></div>
+    <label class="f" style="margin-top:0">What kind of emergency?</label>
+    <div class="seg" id="scenType" role="group" aria-label="Emergency type"><button data-t="quake">Earthquake</button><button data-t="fire">Wildfire</button><button data-t="flood">Flood</button></div>
+    <label class="f" id="sevAsk">How strong is the quake?</label>
+    <div class="seg" id="sevSeg" role="group" aria-label="Severity"></div>
     <p class="hint" id="sevDesc"></p>
+    <div id="scenExtra"></div>
+    <div class="hr"></div>
     <div class="seg" id="goalSeg" role="group" aria-label="What do you need to do?"><button data-g="meet">Meet up</button><button data-g="person">Go to someone</button><button data-g="pickup">Pick up</button></div>
     <div id="gMeet">
       <label class="f" for="meetSel">Meeting point</label>
