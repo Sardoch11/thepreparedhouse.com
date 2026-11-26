@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Google tag (The Prepared House Analytics account) -->
+<script async src="https://www.googletagmanager.com/gtm.js?id=GTM-5PJXP62L"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Partner and Practitioner Survey · The Prepared House</title>
+<meta name="description" content="A short survey for emergency managers, nonprofits, preparedness businesses, schools and care providers about household preparedness in the Portland area.">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=Atkinson+Hyperlegible+Next:wght@400;700&family=Atkinson+Hyperlegible+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ground:#F7F8F6;--surface:#FFFFFF;--ink:#1E262D;--ink-muted:#55606A;--line:#D3D8DC;--line-strong:#7A848E;
+  --storm:#3A4450;--on-storm:#F1F3F5;--on-storm-muted:#B9C1C9;--flare:#FF9B7D;--alert:#E4572E;--ember:#B43D1A;
+  --safe:#1E6B45;--on-safe:#FFFFFF;--safe-deep:#14462D;--clearing:#D9EFE3;--signal:#F2B705;
+  --font-display:"Archivo","Arial Narrow",system-ui,sans-serif;
+  --font-body:"Atkinson Hyperlegible Next","Atkinson Hyperlegible",system-ui,sans-serif;
+  --font-mono:"Atkinson Hyperlegible Mono",ui-monospace,monospace;
+  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-6:24px;--space-8:32px;--space-12:48px;--space-16:64px;
+  --radius-sm:6px;--radius-md:10px;--radius-lg:18px;--radius-pill:999px;
+  --shadow-card:0 1px 2px rgba(30,38,45,.08),0 6px 18px rgba(30,38,45,.06);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;font-family:var(--font-body);font-size:17px;line-height:1.6;color:var(--ink);background:var(--ground);-webkit-font-smoothing:antialiased}
+a{color:var(--safe);font-weight:700}
+:focus-visible{outline:2px solid var(--safe-deep);outline-offset:2px}
+.wrap{max-width:1120px;margin:0 auto;padding:0 var(--space-6)}
+.label{font-family:var(--font-display);font-stretch:87.5%;font-size:13px;line-height:1.25;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin:0}
+h1,h2,h3{font-family:var(--font-display);margin:0;color:var(--ink)}
+h2{font-size:30px;line-height:1.15;font-weight:700}
+h3{font-size:22px;line-height:1.25;font-weight:700}
+.lead{font-size:19px;line-height:1.55;color:var(--ink);margin:0;max-width:62ch}
+.muted{color:var(--ink-muted)}
+.small{font-size:14px;line-height:1.5}
+
+/* Header */
+.site-head{padding:var(--space-4) 0;border-bottom:1px solid var(--line);background:var(--ground);position:sticky;top:0;z-index:10}
+.site-head .wrap{display:flex;align-items:center;justify-content:space-between;gap:var(--space-4)}
+.wordmark{display:flex;flex-direction:column;gap:2px;text-decoration:none}
+.wordmark__name{font-family:var(--font-display);font-weight:800;font-size:24px;line-height:1;letter-spacing:-.01em;color:var(--ink)}
+.wordmark__name span{color:var(--safe)}
+.wordmark__sub{font-family:var(--font-display);font-weight:700;font-size:14px;line-height:1.2;color:var(--ink-muted)}
+.wordmark__sub b{color:var(--safe);font-weight:800}
+.nav{display:flex;gap:var(--space-3);align-items:center}
+.nav a.text{color:var(--ink);text-decoration:none;font-weight:700;font-size:16px}
+.nav a.text:hover{color:var(--safe)}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);min-height:48px;padding:var(--space-3) var(--space-6);border-radius:var(--radius-md);border:2px solid transparent;font-family:var(--font-body);font-size:17px;font-weight:700;line-height:1.2;text-decoration:none;cursor:pointer}
+.btn--primary{background:var(--safe);color:var(--on-safe)}
+.btn--primary:hover{background:var(--safe-deep)}
+.btn--secondary{background:var(--surface);color:var(--ink);border-color:var(--line-strong)}
+.btn--secondary:hover{border-color:var(--ink)}
+.btn[disabled]{opacity:.6;cursor:wait}
+.btn--sm{white-space:nowrap;min-height:40px;padding:var(--space-2) var(--space-4);font-size:16px}
+
+/* Storm to Safe split */
+.hero{padding:var(--space-12) 0 var(--space-12)}
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);border-radius:var(--radius-lg);overflow:hidden}
+.split__storm{background:var(--storm);color:var(--on-storm);padding:var(--space-8);display:flex;flex-direction:column;gap:var(--space-3);justify-content:center}
+.split__storm .label{color:var(--on-storm-muted)}
+.split__storm .split__fact{font-family:var(--font-display);font-stretch:75%;font-weight:800;font-size:56px;line-height:1;margin:0;color:var(--on-storm)}
+.split__storm .split__fact em{font-style:normal;color:var(--flare);display:block}
+.split__storm p{margin:0;font-size:17px;line-height:1.55}
+.split__storm .src{font-size:14px;color:var(--on-storm-muted)}
+.split__safe{background:var(--clearing);padding:var(--space-12) var(--space-8);display:flex;flex-direction:column;gap:var(--space-4)}
+.split__safe .label{color:var(--safe)}
+.split__headline{font-family:var(--font-display);font-weight:700;font-size:56px;line-height:1.05;letter-spacing:-.01em;color:var(--safe-deep);margin:0}
+.split__safe p{margin:0;font-size:19px;line-height:1.55;color:var(--ink);max-width:56ch}
+.split__safe p.small{font-size:14px;color:var(--ink-muted)}
+.actions{display:flex;flex-wrap:wrap;gap:var(--space-3);margin-top:var(--space-2)}
+
+/* Sections */
+section.block{padding:var(--space-12) 0}
+.section-head{display:flex;flex-direction:column;gap:var(--space-3);margin-bottom:var(--space-8)}
+.section-head .label{color:var(--safe)}
+
+/* PATH */
+.path{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-4)}
+.path__step{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-md);padding:var(--space-6);display:flex;flex-direction:column;gap:var(--space-2)}
+.path__marker{width:48px;height:48px;border-radius:var(--radius-pill);background:var(--safe);color:var(--on-safe);display:grid;place-items:center;font-family:var(--font-display);font-weight:800;font-size:24px}
+.path__step .label{color:var(--ink-muted)}
+.path__step p{margin:0;font-size:15px;line-height:1.5;color:var(--ink-muted)}
+.tags{display:flex;flex-wrap:wrap;gap:var(--space-2);margin-top:var(--space-6);align-items:center}
+.tag{display:inline-flex;align-items:center;background:var(--signal);color:var(--ink);border-radius:var(--radius-pill);padding:var(--space-1) var(--space-3);font-family:var(--font-display);font-weight:800;font-size:15px;line-height:1.3}
+
+/* Cards and forms */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-md);box-shadow:var(--shadow-card);padding:var(--space-8)}
+.survey-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:var(--space-8);align-items:start}
+.survey-aside{display:flex;flex-direction:column;gap:var(--space-4);position:sticky;top:96px}
+.facts{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--space-3)}
+.facts li{display:flex;gap:var(--space-3);align-items:flex-start;font-size:16px;line-height:1.5}
+.facts li::before{content:"";flex:none;width:10px;height:10px;margin-top:8px;border-radius:50%;background:var(--safe)}
+.progress{height:6px;background:var(--clearing);border-radius:var(--radius-pill);overflow:hidden;margin-bottom:var(--space-6)}
+.progress span{display:block;height:100%;width:0;background:var(--safe);transition:width .25s}
+fieldset{border:0;margin:0 0 var(--space-6);padding:0 0 var(--space-6);border-bottom:1px solid var(--line)}
+fieldset:last-of-type{border-bottom:0}
+legend,.q-label{display:block;font-family:var(--font-body);font-weight:700;font-size:17px;line-height:1.45;color:var(--ink);margin:0 0 var(--space-3);padding:0}
+.q-num{font-family:var(--font-mono);font-weight:500;font-size:14px;color:var(--ink-muted);margin-right:var(--space-2)}
+.q-help{display:block;font-size:14px;color:var(--ink-muted);margin:-4px 0 var(--space-3)}
+.opt{display:flex;gap:var(--space-3);align-items:flex-start;padding:var(--space-2) var(--space-3);margin:0 0 var(--space-1);border-radius:var(--radius-sm);cursor:pointer;font-size:16px;line-height:1.45}
+.opt:hover{background:var(--ground)}
+.opt input{flex:none;width:20px;height:20px;margin:2px 0 0;accent-color:var(--safe)}
+.scale{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:var(--space-2)}
+.scale label{display:flex;flex-direction:column;align-items:center;gap:var(--space-1);padding:var(--space-3) var(--space-1);border:1px solid var(--line-strong);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-mono);font-weight:500}
+.scale input{position:absolute;opacity:0;pointer-events:none}
+.scale label:has(input:checked){background:var(--safe);color:var(--on-safe);border-color:var(--safe)}
+.scale label:has(input:focus-visible){outline:2px solid var(--safe-deep);outline-offset:2px}
+.scale-ends{display:flex;justify-content:space-between;font-size:14px;color:var(--ink-muted);margin-top:var(--space-2)}
+input[type=text],input[type=email],input[type=tel],textarea{width:100%;font-family:var(--font-body);font-size:17px;color:var(--ink);background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--radius-sm);padding:var(--space-3);min-height:48px}
+input[type=text]:focus,input[type=email]:focus,input[type=tel]:focus,textarea:focus{outline:2px solid var(--safe-deep);outline-offset:1px;border-color:var(--safe-deep)}
+textarea{min-height:96px;resize:vertical}
+.zip{max-width:160px;font-family:var(--font-mono)!important}
+.err{display:none;color:var(--ember);font-size:14px;font-weight:700;margin-top:var(--space-2)}
+.invalid .err{display:block}
+.form-foot{display:flex;flex-wrap:wrap;gap:var(--space-4);align-items:center;justify-content:space-between;margin-top:var(--space-2)}
+.done{display:none;flex-direction:column;gap:var(--space-4);align-items:flex-start;background:var(--clearing);border-radius:var(--radius-md);padding:var(--space-8)}
+.done h3{color:var(--safe-deep)}
+.is-done form{display:none}
+.is-done .done{display:flex}
+.notice{display:none;color:var(--ember);font-weight:700;font-size:15px}
+.notice.show{display:block}
+
+/* Sign-up band */
+.signup{background:var(--clearing);border-radius:var(--radius-lg);padding:var(--space-12) var(--space-8);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--space-8);align-items:start}
+.signup h2{color:var(--safe-deep)}
+.signup .label{color:var(--safe)}
+.field{display:flex;flex-direction:column;gap:var(--space-1);margin-bottom:var(--space-4)}
+.field label{font-weight:700;font-size:16px}
+.field .opt{background:transparent}
+.field .opt:hover{background:rgba(255,255,255,.6)}
+.row{display:grid;grid-template-columns:2fr 1fr;gap:var(--space-4)}
+
+footer{padding:var(--space-12) 0;color:var(--ink-muted);font-size:14px;line-height:1.6;border-top:1px solid var(--line);margin-top:var(--space-12)}
+footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:var(--space-4)}
+
+
+/* Imagery: storm photos sit under slate, safe photos stay warm and natural */
+.photo{position:relative;overflow:hidden;background:var(--storm)}
+.photo img{display:block;width:100%;height:100%;object-fit:cover}
+.photo--storm img{filter:grayscale(.35) contrast(1.05)}
+.photo--storm::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(58,68,80,.25) 0%,rgba(58,68,80,.92) 70%)}
+.photo--safe{background:var(--clearing)}
+.cap{font-size:12px;line-height:1.4;color:var(--ink-muted);margin:var(--space-1) 0 0}
+.cap--on-storm{color:var(--on-storm-muted)}
+.split__storm{position:relative;padding:0;justify-content:flex-end;min-height:480px}
+.split__storm .photo{position:absolute;inset:0}
+.split__storm .storm-copy{position:relative;z-index:1;padding:var(--space-8);display:flex;flex-direction:column;gap:var(--space-3)}
+.split__safe{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:var(--space-8);align-items:center}
+.safe-copy{display:flex;flex-direction:column;gap:var(--space-4)}
+.safe-photo{border-radius:var(--radius-md);overflow:hidden;aspect-ratio:4/5;box-shadow:var(--shadow-card)}
+.safe-photo img{display:block;width:100%;height:100%;object-fit:cover}
+.split__headline{font-size:clamp(40px,4.2vw,52px)}
+.split__storm .split__fact{font-size:48px}
+
+/* Storm to Safe pairs */
+.pairs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-6)}
+.pair{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden;display:flex;flex-direction:column}
+.pair__storm{position:relative;height:200px}
+.pair__storm .photo{position:absolute;inset:0}
+.pair__storm .fact{position:absolute;left:0;right:0;bottom:0;z-index:1;padding:var(--space-4) var(--space-6);color:var(--on-storm)}
+.pair__storm .fact b{display:block;font-family:var(--font-display);font-stretch:75%;font-weight:800;font-size:40px;line-height:1;color:var(--flare)}
+.pair__storm .fact span{display:block;font-size:15px;line-height:1.4;margin-top:var(--space-1)}
+.pair__storm .fact small{display:block;font-size:12px;color:var(--on-storm-muted);margin-top:2px}
+.pair__safe{height:300px}
+.pair__safe img{display:block;width:100%;height:100%;object-fit:cover}
+.pair__body{padding:var(--space-6);display:flex;flex-direction:column;gap:var(--space-3);border-top:4px solid var(--safe)}
+.pair__body p{margin:0}
+.pair__line{font-family:var(--font-display);font-weight:700;font-size:22px;line-height:1.25;color:var(--safe-deep)}
+
+/* PATH step photos */
+.path__photo{margin:calc(var(--space-6) * -1) calc(var(--space-6) * -1) var(--space-2);height:150px;overflow:hidden;border-bottom:1px solid var(--line)}
+.path__photo img{display:block;width:100%;height:100%;object-fit:cover}
+.path__step{overflow:hidden}
+.path__marker{margin-top:calc(var(--space-6) * -1 - 12px);position:relative;border:3px solid var(--surface)}
+
+/* Sign-up photo */
+.signup__photo{border-radius:var(--radius-md);overflow:hidden;aspect-ratio:16/9;margin-top:var(--space-4)}
+.signup__photo img{display:block;width:100%;height:100%;object-fit:cover}
+
+/* Credits */
+.credits{font-size:12px;line-height:1.6;color:var(--ink-muted);max-width:1120px;margin:0 auto;padding:0 var(--space-6) var(--space-8)}
+.credits summary{cursor:pointer;font-weight:700;color:var(--ink)}
+.credits ul{margin:var(--space-2) 0 0;padding-left:18px}
+.credits a{font-weight:400}
+
+@media (max-width:1000px){
+  .split__safe{grid-template-columns:1fr}
+  .safe-photo{aspect-ratio:16/10}
+  .pairs{grid-template-columns:1fr}
+  .pair{display:grid;grid-template-columns:1fr 2fr;grid-template-rows:auto auto}
+  .pair__storm{height:auto;min-height:260px}
+  .pair__safe{height:auto;min-height:260px}
+  .pair__body{grid-column:1 / -1}
+}
+@media (max-width:640px){
+  .split__storm{min-height:380px}
+  .split__headline{font-size:40px}
+  .pair{display:flex}
+  .pair__storm{height:200px;min-height:0}
+  .pair__safe{height:240px;min-height:0}
+}
+
+@media (max-width:900px){
+  .survey-grid,.signup{grid-template-columns:1fr}
+  .survey-aside{position:static}
+  .path{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:640px){
+  .wrap{padding:0 var(--space-4)}
+  .split{grid-template-columns:1fr}
+  .split__storm .split__fact{font-size:44px}
+  .split__headline{font-size:40px}
+  .split__safe{padding:var(--space-8) var(--space-6)}
+  .card{padding:var(--space-6)}
+  .signup{padding:var(--space-8) var(--space-6)}
+  .nav a.text{display:none}
+  .wordmark__name{font-size:20px}
+  .hero{padding-top:var(--space-6)}
+  .row{grid-template-columns:1fr}
+  .path{grid-template-columns:1fr}
+  .scale label{font-size:15px}
+}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}.progress span{transition:none}}
+/* v2 storm layout */.split__storm{justify-content:flex-start}.split__storm .photo{position:relative;inset:auto;flex:1 1 auto;min-height:240px}.split__storm .photo img{position:absolute;inset:0;object-position:center 40%}.photo--storm::after{background:linear-gradient(180deg,rgba(58,68,80,.15) 0%,rgba(58,68,80,.15) 55%,#3A4450 100%)}.split__storm .storm-copy{padding-top:var(--space-4)}.pair__storm{height:auto;background:var(--storm)}.pair__storm .photo{position:relative;inset:auto;height:150px}.pair__storm .fact{position:static;padding:var(--space-2) var(--space-6) var(--space-4);margin:0}.pair__safe{height:320px}@media (max-width:1000px){.pair__storm{min-height:0}.pair__storm .photo{height:170px}}@media (max-width:640px){.split__storm{min-height:0}.split__storm .photo{min-height:200px}}.signup__photo{margin:var(--space-4) 0 0}.pair:nth-child(3) .pair__storm .photo img{object-position:center 85%}[hidden]{display:none!important}
+.beta{margin-top:var(--space-4);padding-top:var(--space-6);border-top:1px solid var(--line-strong);display:flex;flex-direction:column;gap:var(--space-2);align-items:flex-start}.beta h4{margin:0;font-size:1.15rem;color:var(--ink)}.beta p{margin:0}.beta__steps{margin:0;padding-left:1.25em}.beta__steps li{margin:2px 0}.beta__note{font-size:.9rem;color:var(--muted,#5B6770)}.beta .btn{margin-top:var(--space-2)}
+</style>
+<style>.ps-section{margin-bottom:var(--space-6)}.ps-sec-title{font-family:var(--font-display);font-size:1.15rem;margin:var(--space-5) 0 var(--space-3);color:var(--safe-deep)}.ps-section[hidden]{display:none!important}</style>
+</head>
+<body>
+<header class="site-head">
+  <div class="wrap">
+    <a class="wordmark" href="/" aria-label="The Prepared House, home">
+      <span class="wordmark__name">The Prepared <span>House</span></span>
+      <span class="wordmark__sub">Storm to <b>Safe</b></span>
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a class="text" href="/">Home</a>
+      <a class="btn btn--primary btn--sm" href="/#survey">Household survey</a>
+    </nav>
+  </div>
+</header>
+<main id="top">
+  <section class="block" id="partner-survey" aria-labelledby="ps-title">
+    <div class="wrap survey-grid">
+      <div class="survey-aside">
+        <p class="label" style="color:var(--safe)">Partner and practitioner survey</p>
+        <h2 id="ps-title">You see what households miss. Tell me what you've learned.</h2>
+        <p class="lead">This survey is for people who work in or near emergency preparedness: emergency managers, nonprofits and volunteer teams, preparedness businesses, schools, employers, insurers, real estate, property management, healthcare and senior living.</p>
+        <ul class="facts">
+          <li>About 8 to 10 minutes; only the first question is required</li>
+          <li>Questions adjust to the kind of organization you work in</li>
+          <li>I report answers in aggregate and won't name you or your organization without your permission</li>
+          <li>Research for a University of Oregon Executive MBA capstone by Paul Sardoch</li>
+        </ul>
+        <p class="small muted">Live in the Portland area? The <a href="/?ref=partnerpage#survey">5-minute household survey</a> helps too.</p>
+      </div>
+      <div class="card" id="survey-card">
+        <div class="progress" aria-hidden="true"><span id="survey-progress"></span></div>
+        <form id="ps-form" novalidate></form>
+        <div class="done" role="status" aria-live="polite">
+          <p class="label" style="color:var(--safe)">Survey complete</p>
+          <h3>Thank you for sharing your experience.</h3>
+          <p style="margin:0">If you agreed to a follow-up, I'll reach out within two weeks.</p>
+          <p class="small" style="margin:0">Know someone else in this field? Send them <a href="/partners/?ref=colleague">thepreparedhouse.com/partners</a>.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+<footer class="site-foot"><div class="wrap"><p class="small muted">The Prepared House · University of Oregon Executive MBA capstone research · <a href="/">thepreparedhouse.com</a></p></div></footer>
+<iframe name="ph-sink" id="ph-sink" title="Form submission" style="display:none"></iframe>
+<script>
+var SPEC = {"barrierOptions": ["Cost", "Not sure where to start", "Not enough time", "Not sure it would make a difference", "It feels overwhelming or stressful to think about", "It's not a priority right now", "We feel prepared enough already"], "form": {"title": "The Prepared House: Partner and Practitioner Survey", "description": "I'm Paul Sardoch, a University of Oregon Executive MBA student. For my capstone, I'm exploring a household planning service called The Prepared House, which would help Portland-area families get ready to stay safe at home for two weeks and find each other after a disaster.\n\nYou work in or near this field, so your experience matters more than any household answer. This survey takes about 8 to 10 minutes. Only the first question is required. I'll report answers in aggregate and won't name you or your organization without your permission.", "confirmation": "Thank you for sharing your experience. If you agreed to a follow-up, I'll reach out within two weeks.", "sections": [{"id": "about", "title": "About you", "items": [{"id": "type", "type": "mc", "required": true, "branch": true, "title": "Which best describes your organization?", "options": ["Government emergency management (city, county, regional or state)", "Nonprofit, volunteer or community organization (including NET or CERT)", "Private preparedness business or consultant", "School district, employer or other institution", "Insurance, real estate, property management, healthcare or senior living"], "goto": ["gov", "ngo", "biz", "gov", "ind"]}, {"id": "org", "type": "text", "required": false, "title": "Organization name (optional)"}, {"id": "role", "type": "text", "required": false, "title": "Your role or title (optional)"}, {"id": "area", "type": "text", "required": false, "title": "What area do you serve?"}, {"id": "years", "type": "mc", "title": "How long have you worked in or around emergency preparedness?", "options": ["Less than 2 years", "2 to 5 years", "6 to 10 years", "More than 10 years", "It isn't my main work"]}]}, {"id": "gov", "title": "Agencies and institutions", "next": "all", "items": [{"id": "g_share", "type": "mc", "title": "In your estimate, what share of households in your area have a written emergency plan?", "options": ["Under 10%", "10% to 24%", "25% to 49%", "50% or more", "Don't know"]}, {"id": "g_barriers", "type": "checkbox", "max": 3, "optionsRef": "barrierOptions", "title": "Which barriers do you hear most often from households? Select up to three."}, {"id": "g_hard", "type": "paragraph", "title": "Which household groups are hardest for your programs to reach, and why?"}, {"id": "g_programs", "type": "paragraph", "title": "Which household preparedness programs or materials do you use or promote today (for example Be 2 Weeks Ready, NET or BEECN)?"}, {"id": "g_measure", "type": "paragraph", "title": "How, if at all, do you measure whether household programs lead people to act?"}, {"id": "g_view", "type": "mc", "title": "How would your organization view a private service that builds household plans using public guidance?", "options": ["A helpful complement", "Neutral", "Some concerns", "Strong concerns", "It depends", "Don't know"]}, {"id": "g_conditions", "type": "paragraph", "title": "What would a private provider need to do, or avoid, for your organization to feel comfortable sharing information or referring households?"}, {"id": "g_must", "type": "paragraph", "title": "What should every household plan in your area include that most plans miss?"}]}, {"id": "ngo", "title": "Nonprofit and community organizations", "next": "all", "items": [{"id": "n_services", "type": "paragraph", "title": "What preparedness services do you offer households?"}, {"id": "n_cost", "type": "mc", "title": "What do households usually pay for these services?", "options": ["Free", "Sliding scale", "A fixed fee", "Paid by a third party (grant, insurer, employer)", "A mix of these"]}, {"id": "n_demand", "type": "mc", "title": "Over the past two years, how has household demand for these services changed?", "options": ["Grown", "Stayed about the same", "Declined", "Spiked after local events, then fell back", "Don't know"]}, {"id": "n_who", "type": "paragraph", "title": "Who uses your services most, and who rarely does?"}, {"id": "n_barriers", "type": "checkbox", "max": 3, "optionsRef": "barrierOptions", "title": "Which barriers do you hear most often from households? Select up to three."}, {"id": "n_gaps", "type": "paragraph", "title": "What needs do households bring that you can't meet today?"}, {"id": "n_partner", "type": "mc", "title": "Would your organization consider a referral or partnership arrangement with a private planning service?", "options": ["Yes", "Possibly", "No", "Not sure"]}]}, {"id": "biz", "title": "Preparedness businesses and consultants", "next": "all", "items": [{"id": "p_services", "type": "checkbox", "title": "Which services do you offer? Select all that apply.", "options": ["In-home consultations", "Virtual consultations", "Written household plans", "Supply bundles or products", "Classes or workshops", "Plans for businesses or institutions"]}, {"id": "p_clients", "type": "paragraph", "title": "How would you describe your typical household client?"}, {"id": "p_price", "type": "mc", "title": "What is your typical price for a household plan or consultation?", "options": ["Under $150", "$150 to $299", "$300 to $499", "$500 to $999", "$1,000 or more", "Prefer not to say"]}, {"id": "p_hours", "type": "mc", "title": "About how many hours of work does one household plan take, from first contact to delivery?", "options": ["Under 2 hours", "2 to 4 hours", "4 to 6 hours", "6 to 10 hours", "More than 10 hours", "Not applicable"]}, {"id": "p_sources", "type": "checkbox", "title": "Where do most of your household clients come from? Select all that apply.", "options": ["Word of mouth and referrals", "Online search", "Social media", "Real estate or insurance partners", "Community events and classes", "Interest after local disasters"]}, {"id": "p_spike", "type": "mc", "title": "How much does demand change after a local disaster or major news event?", "options": ["A large spike", "A moderate increase", "Little change", "Don't know"]}, {"id": "p_challenge", "type": "paragraph", "title": "What is your biggest challenge in winning and keeping household clients?"}]}, {"id": "ind", "title": "Insurance, real estate, property and care providers", "next": "all", "items": [{"id": "i_ask", "type": "mc", "title": "How often do your clients, residents or patients ask about emergency preparedness?", "options": ["Never", "Rarely", "Sometimes", "Often", "Mostly after a local event"]}, {"id": "i_offer", "type": "paragraph", "title": "What, if anything, do you offer them today?"}, {"id": "i_value", "type": "mc", "title": "Would a hands-on household planning service add value for the people you serve?", "options": ["Yes", "Possibly", "No", "Not sure"]}, {"id": "i_fit", "type": "paragraph", "title": "Where could a service like this fit into what you already do (for example a closing gift, policy renewal, move-in or discharge)?"}]}, {"id": "all", "title": "Your view of the need", "items": [{"id": "c_unmet", "type": "paragraph", "title": "In your experience, what is the biggest unmet need in household preparedness in the Portland area?"}, {"id": "c_observed", "type": "paragraph", "title": "What do you see households overlook or get wrong most often when they prepare?"}, {"id": "c_segments", "type": "checkbox", "max": 3, "title": "Which households would benefit most from hands-on, in-home planning? Select up to three.", "options": ["Families with young children", "Older adults living alone", "People who rely on medical equipment or medication", "People with disabilities or mobility needs", "Renters", "New homeowners or people who just moved", "Non-English-speaking households", "Pet owners"]}, {"id": "c_alternatives", "type": "paragraph", "title": "Which programs, products or businesses do households use for preparedness today? What do they do well, and where do they fall short?"}, {"id": "c_price", "type": "mc", "title": "What do you think most Portland-area families would pay for a whole-home plan with an in-home visit?", "options": ["Only a free option", "Under $250", "$250 to $499", "$500 to $749", "$750 to $999", "$1,000 or more", "Not sure"]}, {"id": "c_payer", "type": "checkbox", "title": "Who should pay for a service like this? Select all that apply.", "options": ["The household", "An employer, as a benefit", "An insurer, as a discount or perk", "A landlord, HOA or property manager", "A healthcare or care provider", "A grant or public program"]}, {"id": "c_reach", "type": "checkbox", "max": 3, "title": "What are the best ways to reach households that mean to prepare but haven't finished? Select up to three.", "options": ["Schools and parent groups", "Employers", "Insurance agents", "Real estate agents or move-in", "Healthcare providers", "Neighborhood groups or NET teams", "Faith communities", "Social media", "Local news", "Right after a local event"]}, {"id": "c_risks", "type": "paragraph", "title": "What could make a service like this fail, or cause harm? What should it avoid?"}, {"id": "c_advice", "type": "paragraph", "title": "If you were starting this service, what would you do first, or differently?"}, {"id": "c_partner", "type": "checkbox", "title": "How might your organization work with a service like this? Select all that apply.", "options": ["Refer households", "Co-host a workshop or event", "Share materials or guidance", "Review plans or give feedback", "Pilot with our members, clients or residents", "Not at this time"]}, {"id": "c_share", "type": "mc", "title": "Could you share the household survey with the people you serve?", "options": ["Yes", "Maybe", "No"]}, {"id": "c_results", "type": "mc", "title": "Would you like a summary of what I learn?", "options": ["Yes", "No"]}, {"id": "c_follow", "type": "mc", "title": "Would you be open to a 20-minute follow-up conversation?", "options": ["Yes", "No"]}, {"id": "c_contact", "type": "text", "title": "If yes to a follow-up or summary, the best email or phone number to reach you"}]}], "ref": {"id": "ref", "type": "text", "fromUrl": "ref", "title": "Referral source"}}};
+var CONFIG = {"action": "", "entries": {}, "link": ""};
+(function () {
+  'use strict';
+  var F = SPEC.form;
+  function el(tag, attrs, html) { var n = document.createElement(tag); if (attrs) for (var k in attrs) if (attrs[k] != null) n.setAttribute(k, attrs[k]); if (html != null) n.innerHTML = html; return n; }
+  function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function opts(it) { return it.optionsRef ? SPEC[it.optionsRef].slice() : it.options.slice(); }
+  var REF = (function () { try { return (new URLSearchParams(location.search).get('ref') || '').replace(/[^a-z0-9_-]/gi, '').slice(0, 40); } catch (e) { return ''; } })();
+  var LIVE = ['thepreparedhouse.com', 'www.thepreparedhouse.com', 'preparedhouse.com', 'www.preparedhouse.com'].indexOf(location.hostname) !== -1;
+  var form = document.getElementById('ps-form');
+  var bySec = {}, all = [];
+  F.sections.forEach(function (sec) {
+    var wrap = el('div', { 'class': 'ps-section', 'data-sec': sec.id });
+    wrap.appendChild(el('h3', { 'class': 'ps-sec-title' }, esc(sec.title)));
+    sec.items.forEach(function (it) {
+      all.push({ it: it, sec: sec.id });
+      var fs = el('fieldset', { 'data-q': it.id }), name = 'q_' + it.id;
+      if (it.type === 'text' || it.type === 'paragraph') {
+        fs.appendChild(el('label', { 'class': 'q-label', 'for': name }, esc(it.title)));
+        fs.appendChild(it.type === 'text' ? el('input', { type: 'text', id: name, name: name, maxlength: '300', autocomplete: 'off' }) : el('textarea', { id: name, name: name, maxlength: '2000' }));
+      } else {
+        fs.appendChild(el('legend', null, esc(it.title) + (it.required ? '' : '')));
+        var type = it.type === 'checkbox' ? 'checkbox' : 'radio';
+        opts(it).forEach(function (o) { fs.appendChild(el('label', { 'class': 'opt' }, '<input type="' + type + '" name="' + name + '" value="' + esc(o) + '"><span>' + esc(o) + '</span>')); });
+      }
+      fs.appendChild(el('span', { 'class': 'err' }, it.max ? 'Select up to ' + it.max + '.' : 'Please answer this question.'));
+      wrap.appendChild(fs);
+    });
+    bySec[sec.id] = wrap; form.appendChild(wrap);
+  });
+  var submit = el('div', { 'class': 'form-foot' }, '<button class="btn btn--primary" type="submit">Submit</button><p class="small muted form-note" id="ps-note"></p>');
+  form.appendChild(submit);
+  var typeItem = F.sections[0].items[0];
+  function branch() {
+    var picked = form.querySelector('input[name="q_type"]:checked');
+    var target = picked ? typeItem.goto[typeItem.options.indexOf(picked.value)] : null;
+    F.sections.forEach(function (sec) {
+      var show = sec.id === 'about' || (target && (sec.id === target || sec.id === 'all'));
+      bySec[sec.id].hidden = !show;
+    });
+    progress();
+  }
+  function progress() {
+    var vis = all.filter(function (a) { return !bySec[a.sec].hidden; }), done = vis.filter(function (a) { return value(a.it).length; });
+    document.getElementById('survey-progress').style.width = (vis.length ? Math.round(100 * done.length / vis.length) : 0) + '%';
+  }
+  function value(it) {
+    var name = 'q_' + it.id;
+    if (it.type === 'text' || it.type === 'paragraph') { var v = form.elements[name].value.trim(); return v ? [v] : []; }
+    return [].map.call(form.querySelectorAll('input[name="' + name + '"]:checked'), function (i) { return i.value; });
+  }
+  form.addEventListener('change', function (e) { if (e.target.name === 'q_type') branch(); else progress(); });
+  form.addEventListener('input', progress);
+  branch();
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var ok = true, first = null, ans = {};
+    all.forEach(function (a) {
+      var fs = form.querySelector('[data-q="' + a.it.id + '"]'); if (bySec[a.sec].hidden) { fs.classList.remove('invalid'); return; }
+      var v = value(a.it), bad = (a.it.required && !v.length) || (a.it.max && v.length > a.it.max);
+      fs.classList.toggle('invalid', !!bad); if (bad) { ok = false; first = first || fs; }
+      if (v.length) ans[a.it.id] = a.it.type === 'checkbox' ? v : v[0];
+    });
+    if (!ok) { first.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    if (REF) ans.ref = REF;
+    var note = document.getElementById('ps-note');
+    if (!LIVE || !CONFIG.action) { note.innerHTML = 'This is a preview copy, so answers aren\'t sent from here.' + (CONFIG.link ? ' <a href="' + CONFIG.link + '">Open the survey in Google Forms</a> instead.' : ''); return; }
+    var f = el('form', { action: CONFIG.action, method: 'POST', target: 'ph-sink' }); f.style.display = 'none';
+    Object.keys(ans).forEach(function (id) { var entry = CONFIG.entries[id]; if (!entry) return; [].concat(ans[id]).forEach(function (v) { var i = el('input', { type: 'hidden', name: 'entry.' + entry }); i.value = v; f.appendChild(i); }); });
+    document.body.appendChild(f);
+    var sink = document.getElementById('ph-sink'), fired = false;
+    function fin() { if (fired) return; fired = true; f.remove(); document.getElementById('survey-card').classList.add('is-done'); document.getElementById('survey-card').scrollIntoView({ behavior: 'smooth', block: 'start' }); if (window.gtag) gtag('event', 'partner_survey_submit', { ref: REF || 'none' }); }
+    sink.addEventListener('load', fin); setTimeout(fin, 4000);
+    submit.querySelector('button').disabled = true; f.submit();
+  });
+})();
+</script>
+</body>
+</html>
