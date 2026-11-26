@@ -1,0 +1,12 @@
+<!DOCTYPE html><meta charset="utf-8"><meta name="robots" content="noindex"><title>Sending file…</title>
+<p style="font-family:sans-serif">Sending file to your post…</p>
+<script>
+// Hands one of this folder's promo files to the window that opened this page, then closes.
+(async function () {
+  var f = (new URLSearchParams(location.search).get('f') || '').replace(/[^a-z0-9._-]/gi, '');
+  if (!f || !window.opener) return;
+  var b = await fetch(f).then(function (r) { return r.blob(); });
+  window.opener.postMessage({ type: 'tph-file', name: f, blob: b }, '*');
+  setTimeout(function () { window.close(); }, 800);
+})();
+</script>
