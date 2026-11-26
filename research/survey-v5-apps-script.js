@@ -49,6 +49,8 @@ function updateFamilySurveyV5() {
     if (all[i].getTitle() === V5_NEW[0].title) { if (i !== 0) form.moveItem(i, 0); break; }
   }
 
+  // Re-read the items: newly added ones are typed items, without asTextItem().
+  form.getItems().forEach(function (x) { byTitle[x.getTitle()] = x; });
   var entries = {};
   V5_NEW.forEach(function (it) {
     var x = byTitle[it.title], resp;
